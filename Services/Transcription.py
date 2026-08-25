@@ -10,7 +10,7 @@ from app.speaker_service import diarize_audio
 print("Loading transcription model...")
 
 model = WhisperModel(
-    "tiny",
+    "base",
     device="cpu",
     compute_type="int8"
 )
