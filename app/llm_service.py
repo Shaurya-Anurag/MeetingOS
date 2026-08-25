@@ -5,7 +5,7 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
     response = requests.post(
         "http://localhost:11434/api/chat",
         json={
-            "model": "qwen3:4b",
+            "model": "llama3.2:3b",
             "messages": [
                 {
                     "role": "system",
@@ -16,10 +16,17 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
                     "content": user_prompt
                 }
             ],
-            "stream": False
-        }
+            "stream": False,
+            "think": False,
+            "format": "json",
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 1200
+            }
+        },
+        timeout=180
     )
 
     response.raise_for_status()
 
-    return response.json()["message"]["content"]
+    return response.json()["message"]["content"].strip()
