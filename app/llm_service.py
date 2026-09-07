@@ -24,7 +24,7 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
                 "num_predict": 1200
             }
         },
-        timeout=180
+        timeout=600
     )
 
     response.raise_for_status()

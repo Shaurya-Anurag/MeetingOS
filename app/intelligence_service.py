@@ -23,6 +23,9 @@ def generate_meeting_intelligence(
         system_prompt,
         user_prompt
     )
+    print("\n===== RAW LLM RESPONSE =====")
+    print(raw_response)
+    print("===== END RAW LLM RESPONSE =====\n")
 
     try:
         return json.loads(raw_response)

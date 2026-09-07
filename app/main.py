@@ -190,10 +190,14 @@ def prepare_meeting(audio_path):
     return (
         transcript,
         speakers,
-        build_speaker_setup_html(speakers),
+        gr.update(
+            value=build_speaker_setup_html(speakers),
+            visible=True
+        ),
         gr.update(
             value=None,
-            visible=True
+            visible=True,
+            label=f"MeetingOS detected {len(speakers)} speakers. Is this correct?"
         ),
         gr.update(
             visible=False
