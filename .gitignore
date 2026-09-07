@@ -2,3 +2,5 @@
 __pycache__/
 *.pyc
 .venv/
+# Local database
+meetingos.db
