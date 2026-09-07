@@ -5,6 +5,19 @@ import re
 from Services.Transcription import transcribe_audio
 from app.analytics_service import analyze_transcript
 from app.intelligence_service import generate_meeting_intelligence
+from app.database import (
+    initialize_database,
+    save_meeting,
+    get_all_meetings,
+    search_meetings,
+    get_meeting,
+    delete_meeting,
+    get_tasks,
+    get_task,
+    update_task_status,
+)
+
+initialize_database()
 
 
 # =========================================================
@@ -843,6 +856,120 @@ def render_contradictions(contradictions):
 
     return "".join(cards)
 
+def _meeting_choices(meetings):
+    choices = []
+
+    for meeting in meetings:
+        duration = meeting["duration_seconds"] or 0
+        label = (
+            f'{meeting["topic"]} '
+            f'• {meeting["created_at"]} '
+            f'• {duration / 60:.1f} min'
+        )
+        choices.append((label, meeting["id"]))
+
+    return choices
+
+
+def build_history_choices():
+    return _meeting_choices(get_all_meetings())
+
+
+def build_search_choices(query):
+    return _meeting_choices(search_meetings(query))
+
+
+def build_task_choices(meeting_id):
+    if meeting_id is None:
+        return []
+
+    choices = []
+    for task in get_tasks(meeting_id):
+        owner = task.get("owner") or "Unassigned"
+        deadline = task.get("deadline") or "No deadline"
+        label = f'{task["task"]} • {owner} • {deadline} • {task["status"]}'
+        choices.append((label, task["id"]))
+
+    return choices
+
+
+def task_selection_changed(task_id):
+    if task_id is None:
+        return gr.update(value="Pending"), ""
+
+    task = get_task(task_id)
+    if task is None:
+        return gr.update(value="Pending"), "Task could not be found."
+
+    owner = task.get("owner") or "Unassigned"
+    deadline = task.get("deadline") or "No deadline"
+    message = (
+        f'<div class="task-meta">'
+        f'<strong>{esc(task["task"])}</strong><br>'
+        f'Owner: {esc(owner)} &nbsp;•&nbsp; Deadline: {esc(deadline)}'
+        f'</div>'
+    )
+    return gr.update(value=task["status"]), message
+
+
+def save_task_status(task_id, status, meeting_id):
+    if task_id is None:
+        return gr.update(choices=build_task_choices(meeting_id), value=None), gr.update(value="Pending"), "Select a task first."
+
+    updated = update_task_status(task_id, status)
+    if not updated:
+        return gr.update(choices=build_task_choices(meeting_id), value=task_id), gr.update(value=status), "Task status could not be updated."
+
+    return (
+        gr.update(choices=build_task_choices(meeting_id), value=task_id),
+        gr.update(value=status),
+        f'<div class="success-message">Task marked <strong>{esc(status)}</strong>.</div>'
+    )
+
+
+def build_workspace_analytics_html():
+    meetings = get_all_meetings()
+    tasks = get_tasks()
+
+    total_duration = sum((m["duration_seconds"] or 0) for m in meetings)
+    pending = sum(1 for t in tasks if t["status"] == "Pending")
+    in_progress = sum(1 for t in tasks if t["status"] == "In Progress")
+    completed = sum(1 for t in tasks if t["status"] == "Completed")
+
+    total_tasks = len(tasks)
+    max_tasks = max(total_tasks, 1)
+
+    return f"""
+    <div class="workspace-analytics">
+        <div class="workspace-metric">
+            <div class="metric-value">{len(meetings)}</div>
+            <div class="metric-label">MEETINGS</div>
+        </div>
+        <div class="workspace-metric">
+            <div class="metric-value">{total_duration / 60:.1f}</div>
+            <div class="metric-label">TOTAL MINUTES</div>
+        </div>
+        <div class="workspace-metric">
+            <div class="metric-value">{total_tasks}</div>
+            <div class="metric-label">TASKS</div>
+        </div>
+        <div class="workspace-metric">
+            <div class="metric-value">{completed}</div>
+            <div class="metric-label">COMPLETED</div>
+        </div>
+    </div>
+
+    <div class="task-bars">
+        <div class="bar-row"><span>Pending</span><div class="bar-track"><div class="bar-fill" style="width:{pending / max_tasks * 100:.1f}%"></div></div><strong>{pending}</strong></div>
+        <div class="bar-row"><span>In Progress</span><div class="bar-track"><div class="bar-fill" style="width:{in_progress / max_tasks * 100:.1f}%"></div></div><strong>{in_progress}</strong></div>
+        <div class="bar-row"><span>Completed</span><div class="bar-track"><div class="bar-fill" style="width:{completed / max_tasks * 100:.1f}%"></div></div><strong>{completed}</strong></div>
+    </div>
+    """
+
+
+def refresh_workspace_analytics():
+    return build_workspace_analytics_html()
+
 
 # =========================================================
 # GENERATE MEETING INTELLIGENCE
@@ -850,6 +977,7 @@ def render_contradictions(contradictions):
 
 def generate_brief(
     transcript,
+    speakers,
     topic
 ):
 
@@ -865,7 +993,11 @@ def generate_brief(
             <div class="empty-page">
                 No meeting data available.
             </div>
-            """
+            """,
+            gr.update(choices=build_history_choices(), value=None),
+            gr.update(choices=[], value=None),
+            gr.update(value="Pending"),
+            ""
         )
 
     if not topic or not topic.strip():
@@ -888,6 +1020,16 @@ def generate_brief(
         topic=topic,
         transcript=transcript
     )
+
+    print("Saving meeting...")
+    meeting_id = save_meeting(
+        topic=topic,
+        transcript=transcript,
+        intelligence=intelligence,
+        analytics=analytics,
+        speaker_data=speakers
+    )
+    print(f"Meeting saved with ID: {meeting_id}")
 
     summary = esc(
         intelligence.get(
@@ -1090,9 +1232,26 @@ def generate_brief(
     </div>
     """
 
+    task_choices = build_task_choices(meeting_id)
+    first_task = task_choices[0][1] if task_choices else None
+
     return (
         intelligence_html,
-        analytics_html
+        analytics_html,
+        gr.update(
+            choices=build_history_choices(),
+            value=meeting_id,
+        ),
+        gr.update(
+            choices=task_choices,
+            value=first_task,
+        ),
+        gr.update(
+            value=(get_task(first_task) or {}).get("status", "Pending")
+            if first_task is not None
+            else "Pending"
+        ),
+        ""
     )
 
 
@@ -1393,6 +1552,62 @@ css = """
     margin-bottom: 10px;
 }
 
+.workspace-analytics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 12px 0 18px 0;
+}
+
+.workspace-metric {
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.task-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.bar-row {
+    display: grid;
+    grid-template-columns: 110px 1fr 30px;
+    gap: 10px;
+    align-items: center;
+    font-size: 13px;
+}
+
+.bar-track {
+    height: 9px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: currentColor;
+}
+
+.task-meta {
+    margin: 6px 0 10px 0;
+    padding: 10px 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.success-message {
+    padding: 9px 12px;
+    font-size: 13px;
+    opacity: 0.8;
+}
+
 @media (max-width: 850px) {
 
     .topic-grid,
@@ -1401,8 +1616,278 @@ css = """
     }
 }
 """
+def delete_saved_meeting(meeting_id):
 
+    if meeting_id is None:
+        return (
+            gr.update(
+                choices=build_history_choices(),
+                value=None
+            ),
+            """
+            <div class="empty-page">
+                Select a meeting to delete.
+            </div>
+            """,
+            """
+            <div class="empty-page">
+                No meeting data available.
+            </div>
+            """
+        )
 
+    deleted = delete_meeting(meeting_id)
+
+    if not deleted:
+        return (
+            gr.update(
+                choices=build_history_choices(),
+                value=None
+            ),
+            """
+            <div class="empty-page">
+                Meeting could not be found.
+            </div>
+            """,
+            """
+            <div class="empty-page">
+                No meeting data available.
+            </div>
+            """
+        )
+
+    print(f"Meeting deleted: {meeting_id}")
+
+    return (
+        gr.update(
+            choices=build_history_choices(),
+            value=None
+        ),
+        """
+        <div class="empty-page">
+            Meeting deleted successfully.
+        </div>
+        """,
+        """
+        <div class="empty-page">
+            No meeting data available.
+        </div>
+        """
+    )
+
+def close_saved_meeting():
+    return (
+        gr.update(value=None),
+        """
+        <div class="empty-page">
+            Analyze a meeting recording to begin.
+        </div>
+        """,
+        """
+        <div class="empty-page">
+            No meeting data available.
+        </div>
+        """
+    )
+
+def open_saved_meeting(meeting_id):
+
+    if meeting_id is None:
+        return (
+            """
+            <div class="empty-page">
+                Select a meeting from history first.
+            </div>
+            """,
+            """
+            <div class="empty-page">
+                No meeting data available.
+            </div>
+            """
+        )
+
+    meeting = get_meeting(meeting_id)
+
+    if meeting is None:
+        return (
+            """
+            <div class="empty-page">
+                Meeting could not be found.
+            </div>
+            """,
+            """
+            <div class="empty-page">
+                No meeting data available.
+            </div>
+            """
+        )
+
+    intelligence = meeting["intelligence"]
+    analytics = meeting["analytics"]
+    topic = meeting["topic"]
+
+    summary = esc(
+        intelligence.get(
+            "executive_summary",
+            "No executive summary identified."
+        )
+    )
+
+    topics_html = render_topics(
+        intelligence.get("topics", [])
+    )
+
+    decisions_html = render_decisions(
+        intelligence.get("decisions", [])
+    )
+
+    actions_html = render_actions(
+        intelligence.get("action_items", [])
+    )
+
+    risks_html = render_risks(
+        intelligence.get("risks_and_concerns", [])
+    )
+
+    questions_html = render_questions(
+        intelligence.get("unresolved_questions", [])
+    )
+
+    contradictions_html = render_contradictions(
+        intelligence.get("contradictions", [])
+    )
+
+    intelligence_html = f"""
+    <div class="report">
+
+        <div class="hero-section">
+            <div class="eyebrow">
+                SAVED MEETING
+            </div>
+
+            <h1>
+                {esc(topic)}
+            </h1>
+
+            <p class="hero-description">
+                Loaded from MeetingOS history.
+            </p>
+        </div>
+
+        <div class="summary-card">
+            <div class="section-label">
+                EXECUTIVE SUMMARY
+            </div>
+
+            <p>
+                {summary}
+            </p>
+        </div>
+
+        <section>
+            <div class="section-heading">
+                Discussion Topics
+            </div>
+
+            <div class="topic-grid">
+                {topics_html}
+            </div>
+        </section>
+
+        <section>
+            <div class="section-heading">
+                Decisions Made
+            </div>
+
+            <div class="stack">
+                {decisions_html}
+            </div>
+        </section>
+
+        <section>
+            <div class="section-heading">
+                Action Items
+            </div>
+
+            <div class="stack">
+                {actions_html}
+            </div>
+        </section>
+
+        <div class="two-column">
+
+            <section>
+                <div class="section-heading">
+                    Risks & Concerns
+                </div>
+
+                <div class="stack">
+                    {risks_html}
+                </div>
+            </section>
+
+            <section>
+                <div class="section-heading">
+                    Unresolved Questions
+                </div>
+
+                <div class="stack">
+                    {questions_html}
+                </div>
+            </section>
+
+        </div>
+
+        <section>
+            <div class="section-heading">
+                Contradictions & Inconsistencies
+            </div>
+
+            <div class="stack">
+                {contradictions_html}
+            </div>
+        </section>
+
+    </div>
+    """
+
+    analytics_html = f"""
+    <div class="analytics-panel">
+
+        <div class="metric">
+            <div class="metric-value">
+                {analytics.get("duration_minutes", 0):.2f}
+            </div>
+
+            <div class="metric-label">
+                MINUTES
+            </div>
+        </div>
+
+        <div class="metric">
+            <div class="metric-value">
+                {analytics.get("word_count", 0):,}
+            </div>
+
+            <div class="metric-label">
+                WORDS
+            </div>
+        </div>
+
+        <div class="metric">
+            <div class="metric-value">
+                {analytics.get("segment_count", 0)}
+            </div>
+
+            <div class="metric-label">
+                SEGMENTS
+            </div>
+        </div>
+
+    </div>
+    """
+
+    return intelligence_html, analytics_html
 # =========================================================
 # UI
 # =========================================================
@@ -1464,6 +1949,109 @@ with gr.Blocks(
                 </div>
                 """
             )
+# -----------------------------------------------------
+# MEETING HISTORY
+# -----------------------------------------------------
+
+    with gr.Row():
+
+        with gr.Column(scale=3):
+
+            history_dropdown = gr.Dropdown(
+                label="Meeting History",
+                choices=build_history_choices(),
+                value=None,
+                interactive=True
+            )
+
+        with gr.Column(scale=1):
+
+            open_meeting_button = gr.Button(
+                "Open Meeting",
+                variant="secondary",
+                interactive=False
+            )
+
+        with gr.Column(scale=1):
+
+            close_meeting_button = gr.Button(
+                "Close Meeting",
+                variant="secondary",
+                interactive=False
+            )
+
+        with gr.Column(scale=1):
+
+            delete_meeting_button = gr.Button(
+                "Delete Meeting",
+                variant="stop",
+                interactive=False
+            )
+
+
+    # -----------------------------------------------------
+    # MEETING SEARCH
+    # -----------------------------------------------------
+
+    with gr.Row():
+
+        search_input = gr.Textbox(
+            label="Search Meetings",
+            placeholder="Search topic, transcript, decisions, tasks...",
+            scale=4
+        )
+
+        search_button = gr.Button(
+            "Search",
+            variant="secondary",
+            scale=1
+        )
+
+    # -----------------------------------------------------
+    # TASK TRACKING
+    # -----------------------------------------------------
+
+    gr.Markdown("## Task Tracker")
+
+    with gr.Row():
+
+        with gr.Column(scale=3):
+
+            task_dropdown = gr.Dropdown(
+                label="Meeting Tasks",
+                choices=[],
+                value=None,
+                interactive=True
+            )
+
+        with gr.Column(scale=1):
+
+            task_status_dropdown = gr.Dropdown(
+                label="Status",
+                choices=[
+                    "Pending",
+                    "In Progress",
+                    "Completed"
+                ],
+                value="Pending",
+                interactive=True
+            )
+
+        with gr.Column(scale=1):
+
+            update_task_button = gr.Button(
+                "Update Status",
+                variant="secondary",
+                interactive=False
+            )
+
+    task_status_message = gr.HTML("")
+
+    gr.Markdown("## Workspace Analytics")
+
+    workspace_analytics_output = gr.HTML(
+        build_workspace_analytics_html()
+    )
 
     # -----------------------------------------------------
     # SPEAKER DETECTION
@@ -1630,17 +2218,146 @@ with gr.Blocks(
     # GENERATE INTELLIGENCE
     # -----------------------------------------------------
 
-    generate_button.click(
+    generate_event = generate_button.click(
         fn=generate_brief,
         inputs=[
             transcript_state,
+            speaker_state,
             topic_input
         ],
         outputs=[
             intelligence_output,
-            analytics_output
+            analytics_output,
+            history_dropdown,
+            task_dropdown,
+            task_status_dropdown,
+            task_status_message
         ],
         show_progress="hidden"
+    )
+
+    generate_event.then(
+        fn=refresh_workspace_analytics,
+        inputs=[],
+        outputs=[workspace_analytics_output]
+    )
+
+    search_button.click(
+        fn=build_search_choices,
+        inputs=[search_input],
+        outputs=[history_dropdown]
+    )
+
+    def update_history_selection(meeting_id):
+        task_choices = build_task_choices(meeting_id)
+        first_task = task_choices[0][1] if task_choices else None
+        current_status = (get_task(first_task) or {}).get("status", "Pending") if first_task is not None else "Pending"
+
+        return (
+            gr.update(interactive=meeting_id is not None),
+            gr.update(interactive=meeting_id is not None),
+            gr.update(interactive=meeting_id is not None),
+            gr.update(interactive=first_task is not None),
+            gr.update(choices=task_choices, value=first_task),
+            gr.update(value=current_status),
+            ""
+        )
+
+    history_dropdown.change(
+        fn=update_history_selection,
+        inputs=[history_dropdown],
+        outputs=[
+            open_meeting_button,
+            close_meeting_button,
+            delete_meeting_button,
+            update_task_button,
+            task_dropdown,
+            task_status_dropdown,
+            task_status_message
+        ]
+    )
+
+    task_dropdown.change(
+        fn=task_selection_changed,
+        inputs=[task_dropdown],
+        outputs=[task_status_dropdown, task_status_message]
+    )
+
+    update_task_event = update_task_button.click(
+        fn=save_task_status,
+        inputs=[task_dropdown, task_status_dropdown, history_dropdown],
+        outputs=[task_dropdown, task_status_dropdown, task_status_message]
+    )
+
+    update_task_event.then(
+        fn=refresh_workspace_analytics,
+        inputs=[],
+        outputs=[workspace_analytics_output]
+    )
+
+    open_meeting_button.click(
+        fn=open_saved_meeting,
+        inputs=[
+            history_dropdown
+        ],
+        outputs=[
+            intelligence_output,
+            analytics_output
+        ]
+    )
+
+    close_event = close_meeting_button.click(
+        fn=close_saved_meeting,
+        inputs=[],
+        outputs=[
+            history_dropdown,
+            intelligence_output,
+            analytics_output
+        ]
+    )
+
+    close_event.then(
+        fn=update_history_selection,
+        inputs=[history_dropdown],
+        outputs=[
+            open_meeting_button,
+            close_meeting_button,
+            delete_meeting_button,
+            update_task_button,
+            task_dropdown,
+            task_status_dropdown,
+            task_status_message
+        ]
+    )
+
+    delete_event = delete_meeting_button.click(
+        fn=delete_saved_meeting,
+        inputs=[
+            history_dropdown
+        ],
+        outputs=[
+            history_dropdown,
+            intelligence_output,
+            analytics_output
+        ]
+    )
+
+    delete_event.then(
+        fn=update_history_selection,
+        inputs=[history_dropdown],
+        outputs=[
+            open_meeting_button,
+            close_meeting_button,
+            delete_meeting_button,
+            update_task_button,
+            task_dropdown,
+            task_status_dropdown,
+            task_status_message
+        ]
+    ).then(
+        fn=refresh_workspace_analytics,
+        inputs=[],
+        outputs=[workspace_analytics_output]
     )
 
 
