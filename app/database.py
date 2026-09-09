@@ -3,7 +3,6 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-
 DB_PATH = Path(__file__).resolve().parent.parent / "meetingos.db"
 
 
@@ -53,7 +52,6 @@ def initialize_database():
 def save_meeting(topic, transcript, intelligence, analytics, speaker_data=None):
     initialize_database()
     created_at = datetime.now().isoformat(timespec="seconds")
-
     with get_connection() as connection:
         cursor = connection.cursor()
         cursor.execute(
@@ -63,7 +61,7 @@ def save_meeting(topic, transcript, intelligence, analytics, speaker_data=None):
                 speaker_data, intelligence_json, analytics_json
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
-            """ ,
+            """,
             (
                 topic,
                 created_at,
@@ -116,6 +114,7 @@ def get_all_meetings():
             ORDER BY created_at DESC
             """
         ).fetchall()
+
     return [dict(row) for row in rows]
 
 
@@ -167,25 +166,52 @@ def get_meeting(meeting_id):
     return meeting
 
 
-def get_tasks(meeting_id=None):
+def get_tasks(meeting_id=None, status=None):
+    """
+    Return tasks globally or for one meeting.
+
+    Includes meeting topic/created_at so the global Task Tracker can show
+    where each task came from.
+    """
     initialize_database()
 
     query = """
-        SELECT id, meeting_id, task, owner, deadline, status, evidence
-        FROM tasks
+        SELECT
+            t.id,
+            t.meeting_id,
+            t.task,
+            t.owner,
+            t.deadline,
+            t.status,
+            t.evidence,
+            m.topic AS meeting_topic,
+            m.created_at AS meeting_created_at
+        FROM tasks AS t
+        JOIN meetings AS m
+            ON m.id = t.meeting_id
     """
-    params = ()
+
+    conditions = []
+    params = []
 
     if meeting_id is not None:
-        query += " WHERE meeting_id = ?"
-        params = (meeting_id,)
+        conditions.append("t.meeting_id = ?")
+        params.append(meeting_id)
 
-    query += " ORDER BY id DESC"
+    if status is not None:
+        conditions.append("t.status = ?")
+        params.append(status)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    query += " ORDER BY t.id DESC"
 
     with get_connection() as connection:
-        rows = connection.execute(query, params).fetchall()
+        rows = connection.execute(query, tuple(params)).fetchall()
 
     tasks = []
+
     for row in rows:
         task = dict(row)
         task["evidence"] = json.loads(task["evidence"] or "[]")
@@ -199,9 +225,20 @@ def get_task(task_id):
     with get_connection() as connection:
         row = connection.execute(
             """
-            SELECT id, meeting_id, task, owner, deadline, status, evidence
-            FROM tasks
-            WHERE id = ?
+            SELECT
+                t.id,
+                t.meeting_id,
+                t.task,
+                t.owner,
+                t.deadline,
+                t.status,
+                t.evidence,
+                m.topic AS meeting_topic,
+                m.created_at AS meeting_created_at
+            FROM tasks AS t
+            JOIN meetings AS m
+                ON m.id = t.meeting_id
+            WHERE t.id = ?
             """,
             (task_id,),
         ).fetchone()
@@ -216,10 +253,12 @@ def get_task(task_id):
 
 def update_task_status(task_id, status):
     allowed_statuses = {"Pending", "In Progress", "Completed"}
+
     if status not in allowed_statuses:
         return False
 
     initialize_database()
+
     with get_connection() as connection:
         cursor = connection.cursor()
         cursor.execute(
@@ -234,6 +273,7 @@ def update_task_status(task_id, status):
 
 def delete_meeting(meeting_id):
     initialize_database()
+
     with get_connection() as connection:
         cursor = connection.cursor()
         cursor.execute(
@@ -242,6 +282,7 @@ def delete_meeting(meeting_id):
         )
         deleted = cursor.rowcount
         connection.commit()
+
     return deleted > 0
 
 
