@@ -337,27 +337,20 @@ def build_optional_report_sections(
 ) -> str:
     sections = []
 
-    if topics_html:
-        sections.append(optional_section("Discussion Topics", topics_html, "topic-grid"))
+    # Put the most decision-useful information first, then supporting context.
     if decisions_html:
         sections.append(optional_section("Decisions Made", decisions_html))
     if actions_html:
         sections.append(optional_section("Action Items", actions_html))
+    if topics_html:
+        sections.append(optional_section("Discussion Topics", topics_html, "topic-grid"))
 
-    if risks_html and questions_html:
-        sections.append(
-            f"""
-            <div class="two-column">
-                {optional_section("Risks & Concerns", risks_html)}
-                {optional_section("Unresolved Questions", questions_html)}
-            </div>
-            """
-        )
-    else:
-        if risks_html:
-            sections.append(optional_section("Risks & Concerns", risks_html))
-        if questions_html:
-            sections.append(optional_section("Unresolved Questions", questions_html))
+    # Keep risk/question sections in the main report flow. A two-column layout
+    # creates awkward empty space when one category has fewer items than the other.
+    if risks_html:
+        sections.append(optional_section("Risks & Concerns", risks_html))
+    if questions_html:
+        sections.append(optional_section("Unresolved Questions", questions_html))
 
     if contradictions_html:
         sections.append(
@@ -680,18 +673,26 @@ def build_workspace_analytics_html(data: dict) -> str:
     </div>
     <div class="analytics-subheading">Recent meeting duration</div>
     <div class="task-bars">
-        {''.join(duration_rows) if duration_rows else '<div class="empty-state">No meetings recorded yet.</div>'}
+        {''.join(duration_rows) if duration_rows else '<div class="empty-state">No meetings have been saved yet. Analyze and generate a meeting to add it to History & Search.</div>'}
     </div>
     """
 
 
 def task_selection_changed(get_selected_task: Callable, task_id):
     if task_id is None:
-        return gr.update(value="Pending"), ""
+        return (
+            gr.update(value="Pending", interactive=False),
+            gr.update(interactive=False),
+            '<div class="empty-state">Select a task to view its current status and update it.</div>',
+        )
 
     task = get_selected_task(task_id)
     if task is None:
-        return gr.update(value="Pending"), "Task could not be found."
+        return (
+            gr.update(value="Pending", interactive=False),
+            gr.update(interactive=False),
+            '<div class="empty-state">That task is no longer available. Refresh the task list and select a current task.</div>',
+        )
 
     owner = task.get("owner") or "Unassigned"
     deadline = task.get("deadline") or "No deadline"
@@ -699,7 +700,11 @@ def task_selection_changed(get_selected_task: Callable, task_id):
         f'<div class="task-meta"><strong>{esc(task["task"])}</strong><br>'
         f'Owner: {esc(owner)} &nbsp;•&nbsp; Deadline: {esc(deadline)}</div>'
     )
-    return gr.update(value=task["status"]), message
+    return (
+        gr.update(value=task["status"], interactive=True),
+        gr.update(interactive=True),
+        message,
+    )
 
 
 # =========================================================
@@ -783,7 +788,13 @@ def build_app(
             )
         return gr.update(visible=False), gr.update(visible=False)
 
-    def ui_finalize_speakers(transcript, speakers, confirmation, *names):
+    def ui_finalize_speakers(confirmed, transcript, speakers, confirmation, *names):
+        if not confirmed:
+            return (
+                transcript,
+                *[gr.update() for _ in range(12)],
+            )
+
         result = finalize_speakers(
             transcript,
             speakers,
@@ -820,8 +831,8 @@ def build_app(
         result = generate_brief(transcript, speakers, topic)
         if not result["ok"]:
             return (
-                '<div class="empty-page">No meeting transcript available.</div>',
-                '<div class="empty-page">No meeting data available.</div>',
+                '<div class="empty-page"><strong>No meeting is ready to generate.</strong><br>Analyze a recording and complete speaker review first.</div>',
+                '<div class="empty-page"><strong>No meeting is open.</strong><br>Select a saved meeting from History & Search, or analyze a new recording.</div>',
                 "",
                 gr.update(choices=build_history_choices(), value=None),
                 gr.update(choices=[], value=None),
@@ -884,10 +895,17 @@ def build_app(
             else "Pending"
         )
         return (
-            gr.update(choices=choices, value=first_task),
-            gr.update(value=current_status),
+            gr.update(
+                choices=choices,
+                value=first_task,
+            ),
+            gr.update(value=current_status, interactive=first_task is not None),
             gr.update(interactive=first_task is not None),
-            "",
+            (
+                '<div class="empty-state">No tasks match this filter. Try another status.</div>'
+                if not choices
+                else ""
+            ),
         )
 
     def ui_save_task_status(task_id, status, status_filter):
@@ -895,7 +913,7 @@ def build_app(
             return (
                 gr.update(choices=build_task_choices(status_filter), value=None),
                 gr.update(value="Pending"),
-                "Select a task first.",
+                "Select a task first. Choose one from Workspace Tasks before updating its status.",
             )
 
         updated = set_task_status(task_id, status)
@@ -903,7 +921,7 @@ def build_app(
             return (
                 gr.update(choices=build_task_choices(status_filter), value=task_id),
                 gr.update(value=status),
-                "Task status could not be updated.",
+                "The task status could not be updated. Check the selected task and try again.",
             )
 
         choices = build_task_choices(status_filter)
@@ -944,7 +962,7 @@ def build_app(
         if not result["ok"]:
             return (
                 f'<div class="empty-page">{esc(result["error"])}</div>',
-                '<div class="empty-page">No meeting data available.</div>',
+                '<div class="empty-page"><strong>No meeting is open.</strong><br>Select a saved meeting from History & Search, or analyze a new recording.</div>',
                 "",
                 *hidden,
             )
@@ -968,31 +986,54 @@ def build_app(
     def ui_close_saved_meeting():
         return (
             gr.update(value=None),
-            '<div class="empty-page">Analyze a meeting recording to begin.</div>',
-            '<div class="empty-page">No meeting data available.</div>',
+            '<div class="empty-page"><strong>No meeting is open.</strong><br>Select a saved meeting from History & Search, or analyze a new recording.</div>',
+            '<div class="empty-page"><strong>No meeting is open.</strong><br>Select a saved meeting from History & Search, or analyze a new recording.</div>',
             "",
             *_hide_speaker_workflow_updates(),
         )
 
-    def ui_delete_saved_meeting(meeting_id):
+    def ui_delete_saved_meeting(confirmed, meeting_id):
+        if not confirmed:
+            return (
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                *[gr.update() for _ in range(12)],
+            )
+
         result = remove_saved_meeting(meeting_id)
         hidden = _hide_speaker_workflow_updates()
         if not result["ok"]:
             return (
                 gr.update(choices=build_history_choices(), value=None),
                 f'<div class="empty-page">{esc(result["error"])}</div>',
-                '<div class="empty-page">No meeting data available.</div>',
+                '<div class="empty-page"><strong>No meeting is open.</strong><br>Select a saved meeting from History & Search, or analyze a new recording.</div>',
                 "",
                 *hidden,
             )
 
         return (
             gr.update(choices=build_history_choices(), value=None),
-            '<div class="empty-page">Meeting deleted successfully.</div>',
-            '<div class="empty-page">No meeting data available.</div>',
+            '<div class="empty-page"><strong>Meeting deleted.</strong><br>Select another saved meeting from History & Search or start a new meeting.</div>',
+            '<div class="empty-page"><strong>No meeting is open.</strong><br>Select a saved meeting from History & Search, or analyze a new recording.</div>',
             "",
             *hidden,
         )
+
+    def ui_open_confirm_modal():
+        return gr.update(visible=True)
+
+    def ui_cancel_confirm_modal():
+        return gr.update(visible=False)
+
+    def ui_confirm_speakers(transcript, speakers, confirmation, *names):
+        result = ui_finalize_speakers(True, transcript, speakers, confirmation, *names)
+        return (*result, gr.update(visible=False))
+
+    def ui_confirm_delete(meeting_id):
+        result = ui_delete_saved_meeting(True, meeting_id)
+        return (*result, gr.update(visible=False))
 
     css = """
     .gradio-container { max-width: 1250px !important; margin: 0 auto !important; }
@@ -1074,6 +1115,42 @@ def build_app(
     .visual-kpi-value span { font-size: 15px; margin-left: 6px; opacity: 0.6; }
     .visual-kpi-label { font-size: 12px; opacity: 0.6; margin-top: 2px; }
     .visual-evidence { margin-top: 12px; padding: 9px 11px; border-left: 2px solid rgba(255,255,255,0.20); font-size: 12px; line-height: 1.45; opacity: 0.65; }
+    .confirm-modal {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 9999 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 24px !important;
+        background: rgba(0, 0, 0, 0.62) !important;
+    }
+    .confirm-modal > .wrap {
+        width: auto !important;
+        max-width: none !important;
+        height: auto !important;
+        min-height: 0 !important;
+        flex: 0 0 auto !important;
+    }
+    .confirm-modal .modal-card {
+        width: min(520px, 92vw) !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: calc(100vh - 48px) !important;
+        flex: 0 0 auto !important;
+        padding: 28px !important;
+        border: 1px solid rgba(255,255,255,0.14) !important;
+        border-radius: 14px !important;
+        background: #1d1d1f !important;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.55) !important;
+    }
+    .confirm-modal .modal-card > .wrap {
+        height: auto !important;
+        min-height: 0 !important;
+    }
+    .confirm-modal .modal-title { margin: 0 0 10px 0 !important; font-size: 22px !important; font-weight: 700 !important; }
+    .confirm-modal .modal-body { margin: 0 0 22px 0 !important; font-size: 15px !important; line-height: 1.5 !important; opacity: 0.82 !important; }
+    .confirm-modal .modal-actions { justify-content: flex-end !important; gap: 10px !important; }
     @media (max-width: 850px) { .topic-grid, .two-column, .visual-analytics-grid { grid-template-columns: 1fr; } }
     """
 
@@ -1110,7 +1187,7 @@ def build_app(
 
             with gr.Column(scale=1):
                 analytics_output = gr.HTML(
-                    '<div class="empty-page">Meeting metrics will appear after the recording is analyzed.</div>'
+                    '<div class="empty-page"><strong>No meeting metrics yet.</strong><br>Analyze a recording to calculate duration, segments, and word count.</div>'
                 )
 
         # -----------------------------------------------------
@@ -1164,12 +1241,13 @@ def build_app(
         speaker_state = gr.State({})
 
         # -----------------------------------------------------
-        # 4. CURRENT MEETING RESULTS
+        # 4. CURRENT MEETING
         # -----------------------------------------------------
 
-        gr.Markdown("## Meeting Results")
+        gr.Markdown("## Current Meeting")
+        gr.Markdown("### Meeting Intelligence")
         intelligence_output = gr.HTML(
-            '<div class="empty-page">Analyze a recording to see the meeting results here.</div>'
+            '<div class="empty-page"><strong>No meeting results yet.</strong><br>Analyze a recording, review the speakers, and generate the meeting intelligence.</div>'
         )
         visual_analytics_output = gr.HTML("")
 
@@ -1179,7 +1257,7 @@ def build_app(
 
         gr.Markdown("## Workspace")
 
-        with gr.Accordion("Tasks", open=True):
+        with gr.Accordion("Task Tracker", open=True):
             with gr.Row():
                 with gr.Column(scale=2):
                     task_filter_dropdown = gr.Dropdown(
@@ -1190,7 +1268,7 @@ def build_app(
                     )
                 with gr.Column(scale=4):
                     task_dropdown = gr.Dropdown(
-                        label="Workspace Tasks",
+                        label="Select task",
                         choices=build_task_choices(),
                         value=None,
                         interactive=True,
@@ -1199,10 +1277,10 @@ def build_app(
             with gr.Row():
                 with gr.Column(scale=1):
                     task_status_dropdown = gr.Dropdown(
-                        label="Selected task status",
+                        label="Status for selected task",
                         choices=["Pending", "In Progress", "Completed"],
                         value="Pending",
-                        interactive=True,
+                        interactive=False,
                     )
                 with gr.Column(scale=1):
                     update_task_button = gr.Button(
@@ -1213,7 +1291,7 @@ def build_app(
 
             task_status_message = gr.HTML("")
 
-        with gr.Accordion("History & Search", open=False):
+        with gr.Accordion("Meeting History & Search", open=False):
             with gr.Row():
                 history_dropdown = gr.Dropdown(
                     label="Saved Meetings",
@@ -1238,6 +1316,24 @@ def build_app(
             workspace_analytics_output = gr.HTML(
                 build_workspace_analytics_html(workspace_analytics_data())
             )
+
+        # -----------------------------------------------------
+        # CONFIRMATION MODALS
+        # -----------------------------------------------------
+
+        with gr.Column(visible=False, elem_id="speaker-confirm-modal", elem_classes=["confirm-modal"]) as speaker_confirm_modal:
+            with gr.Column(elem_classes=["modal-card"]):
+                gr.HTML("<div class='modal-title'>Confirm speaker names?</div><div class='modal-body'>These names will be applied to the detected speakers for this meeting.</div>")
+                with gr.Row(elem_classes=["modal-actions"]):
+                    speaker_cancel_button = gr.Button("Cancel", variant="secondary")
+                    speaker_confirm_button = gr.Button("Confirm Names", variant="primary")
+
+        with gr.Column(visible=False, elem_id="delete-confirm-modal", elem_classes=["confirm-modal"]) as delete_confirm_modal:
+            with gr.Column(elem_classes=["modal-card"]):
+                gr.HTML("<div class='modal-title'>Delete this meeting?</div><div class='modal-body'>This will permanently remove the meeting, transcript, intelligence, and tasks.</div>")
+                with gr.Row(elem_classes=["modal-actions"]):
+                    delete_cancel_button = gr.Button("Cancel", variant="secondary")
+                    delete_confirm_button = gr.Button("Delete Meeting", variant="stop")
 
         # -----------------------------------------------------
         # EVENT WIRING
@@ -1271,33 +1367,25 @@ def build_app(
         )
 
         continue_speakers_button.click(
-            fn=ui_finalize_speakers,
-            inputs=[
-                transcript_state,
-                speaker_state,
-                speaker_confirmation,
-                name1,
-                name2,
-                name3,
-                name4,
-                name5,
-                name6,
-            ],
+            fn=ui_open_confirm_modal,
+            inputs=[],
+            outputs=[speaker_confirm_modal],
+        )
+
+        speaker_confirm_button.click(
+            fn=ui_confirm_speakers,
+            inputs=[transcript_state, speaker_state, speaker_confirmation, name1, name2, name3, name4, name5, name6],
             outputs=[
-                transcript_state,
-                speaker_review_heading,
-                speaker_setup,
-                speaker_confirmation,
-                speaker_mapping_group,
-                name1,
-                name2,
-                name3,
-                name4,
-                name5,
-                name6,
-                continue_speakers_button,
-                generate_button,
+                transcript_state, speaker_review_heading, speaker_setup, speaker_confirmation,
+                speaker_mapping_group, name1, name2, name3, name4, name5, name6,
+                continue_speakers_button, generate_button, speaker_confirm_modal,
             ],
+        )
+
+        speaker_cancel_button.click(
+            fn=ui_cancel_confirm_modal,
+            inputs=[],
+            outputs=[speaker_confirm_modal],
         )
 
         generate_event = generate_button.click(
@@ -1355,7 +1443,7 @@ def build_app(
         task_dropdown.change(
             fn=lambda task_id: task_selection_changed(get_selected_task, task_id),
             inputs=[task_dropdown],
-            outputs=[task_status_dropdown, task_status_message],
+            outputs=[task_status_dropdown, update_task_button, task_status_message],
         )
 
         update_task_event = update_task_button.click(
@@ -1429,27 +1517,27 @@ def build_app(
             ],
         )
 
-        delete_event = delete_meeting_button.click(
-            fn=ui_delete_saved_meeting,
+        delete_meeting_button.click(
+            fn=ui_open_confirm_modal,
+            inputs=[],
+            outputs=[delete_confirm_modal],
+        )
+
+        delete_event = delete_confirm_button.click(
+            fn=ui_confirm_delete,
             inputs=[history_dropdown],
             outputs=[
-                history_dropdown,
-                intelligence_output,
-                analytics_output,
-                visual_analytics_output,
-                speaker_review_heading,
-                speaker_setup,
-                speaker_confirmation,
-                speaker_mapping_group,
-                name1,
-                name2,
-                name3,
-                name4,
-                name5,
-                name6,
-                continue_speakers_button,
-                generate_button,
+                history_dropdown, intelligence_output, analytics_output, visual_analytics_output,
+                speaker_review_heading, speaker_setup, speaker_confirmation, speaker_mapping_group,
+                name1, name2, name3, name4, name5, name6,
+                continue_speakers_button, generate_button, delete_confirm_modal,
             ],
+        )
+
+        delete_cancel_button.click(
+            fn=ui_cancel_confirm_modal,
+            inputs=[],
+            outputs=[delete_confirm_modal],
         )
 
         delete_event.then(
