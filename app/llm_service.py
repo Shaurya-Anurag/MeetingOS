@@ -21,7 +21,7 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
             "format": "json",
             "options": {
                 "temperature": 0.1,
-                "num_predict": 1200
+                "num_predict": 3000
             }
         },
         timeout=600
