@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+import time
 
 from faster_whisper import WhisperModel
 
@@ -91,46 +92,59 @@ def find_speaker(start: float, end: float, speaker_segments: list) -> str:
     return best_speaker
 
 
-def transcribe_audio(audio_path: str) -> str:
 
-    # -------------------------
+def transcribe_audio(audio_path: str) -> str:
+    total_start = time.perf_counter()
+
     # 1. Whisper transcription
-    # -------------------------
+    stage_start = time.perf_counter()
+    print("[TIMING] Whisper transcription started...")
 
     segments, info = model.transcribe(
         audio_path,
         beam_size=1,
         vad_filter=True
     )
-
     whisper_segments = list(segments)
 
-    # -------------------------
-    # 2. Speaker diarization
-    # -------------------------
-
-    print("Running speaker diarization...")
-
-    diarization_audio = prepare_diarization_audio(
-        audio_path
+    print(
+        f"[TIMING] Whisper: "
+        f"{time.perf_counter() - stage_start:.2f}s "
+        f"({len(whisper_segments)} segments)"
     )
 
+    # 2. Audio conversion
+    stage_start = time.perf_counter()
+    print("[TIMING] Preparing diarization audio...")
+
+    diarization_audio = prepare_diarization_audio(audio_path)
+
+    print(
+        f"[TIMING] Audio conversion: "
+        f"{time.perf_counter() - stage_start:.2f}s"
+    )
+
+    # 3. Speaker diarization
+    stage_start = time.perf_counter()
+    print("[TIMING] Speaker diarization started...")
+
     try:
-        speaker_segments = diarize_audio(
-            diarization_audio
-        )
+        speaker_segments = diarize_audio(diarization_audio)
     finally:
         if os.path.exists(diarization_audio):
             os.remove(diarization_audio)
 
-    # -------------------------
-    # 3. Merge Whisper + speakers
-    # -------------------------
+    print(
+        f"[TIMING] Diarization: "
+        f"{time.perf_counter() - stage_start:.2f}s "
+        f"({len(speaker_segments)} speaker segments)"
+    )
 
+    # 4. Merge Whisper and diarization
+    stage_start = time.perf_counter()
     transcript = []
 
     for segment in whisper_segments:
-
         speaker = find_speaker(
             segment.start,
             segment.end,
@@ -142,17 +156,15 @@ def transcribe_audio(audio_path: str) -> str:
             f"{speaker}: {segment.text.strip()}"
         )
 
-    return "\n".join(transcript)
-
-
-if __name__ == "__main__":
-
-    transcript = transcribe_audio(
-        "test_diarization.wav"
-    )
+    result = "\n".join(transcript)
 
     print(
-        "\n===== SPEAKER-AWARE TRANSCRIPT =====\n"
+        f"[TIMING] Speaker matching and formatting: "
+        f"{time.perf_counter() - stage_start:.2f}s"
+    )
+    print(
+        f"[TIMING] TOTAL transcription pipeline: "
+        f"{time.perf_counter() - total_start:.2f}s"
     )
 
-    print(transcript)
+    return result

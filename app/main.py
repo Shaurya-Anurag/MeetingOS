@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+import time
+
 from Services.Transcription import transcribe_audio
 from app.analytics_service import analyze_transcript
 from app.intelligence_service import generate_meeting_intelligence
@@ -126,6 +128,7 @@ def finalize_speakers(
 # =========================================================
 
 
+
 def generate_brief(
     transcript: str,
     speakers: dict,
@@ -138,22 +141,51 @@ def generate_brief(
             "error": "No meeting transcript available.",
         }
 
+    total_start = time.perf_counter()
+
     topic = (topic or "").strip() or "Meeting Discussion"
 
+    # 1. Analytics
+    stage_start = time.perf_counter()
     print("Calculating analytics...")
+
     analytics = analyze_transcript(transcript)
 
+    print(
+        f"[TIMING] Analytics: "
+        f"{time.perf_counter() - stage_start:.2f}s"
+    )
+
+    # 2. Meeting intelligence
+    stage_start = time.perf_counter()
     print("Generating meeting intelligence...")
+
     intelligence = generate_meeting_intelligence(
         topic=topic,
         transcript=transcript,
     )
 
+    print(
+        f"[TIMING] Meeting intelligence: "
+        f"{time.perf_counter() - stage_start:.2f}s"
+    )
+
+    # 3. Visual insights
+    stage_start = time.perf_counter()
     print("Extracting quantitative insights...")
+
     visual_insights = extract_visual_insights(transcript)
     analytics["visual_insights"] = visual_insights
 
+    print(
+        f"[TIMING] Visual insights: "
+        f"{time.perf_counter() - stage_start:.2f}s"
+    )
+
+    # 4. Database persistence
+    stage_start = time.perf_counter()
     print("Saving meeting...")
+
     meeting_id = save_meeting(
         topic=topic,
         transcript=transcript,
@@ -161,7 +193,17 @@ def generate_brief(
         analytics=analytics,
         speaker_data=speakers,
     )
+
     print(f"Meeting saved with ID: {meeting_id}")
+    print(
+        f"[TIMING] Database save: "
+        f"{time.perf_counter() - stage_start:.2f}s"
+    )
+
+    print(
+        f"[TIMING] TOTAL generate_brief: "
+        f"{time.perf_counter() - total_start:.2f}s"
+    )
 
     return {
         "ok": True,
@@ -174,6 +216,7 @@ def generate_brief(
         "visual_insights": visual_insights,
         "error": None,
     }
+
 
 
 # =========================================================

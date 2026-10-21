@@ -6,6 +6,7 @@ from typing import Callable, Any
 import gradio as gr
 
 from app.database import get_all_meetings, search_meetings, get_tasks
+from app.ask_service import ask_meetingos
 from app.visual_analytics_service import validate_visual_insights
 
 
@@ -87,20 +88,45 @@ def render_evidence(evidence) -> str:
         return ""
 
     blocks = []
+
     for item in evidence:
         if not isinstance(item, dict):
             continue
 
+        speaker = esc(item.get("speaker", ""))
         timestamp = esc(item.get("timestamp", ""))
         text = esc(item.get("text", ""))
 
-        if timestamp or text:
+        if speaker or timestamp or text:
+
+            speaker_html = (
+                f'<span class="evidence-speaker">{speaker}</span>'
+                if speaker
+                else ""
+            )
+
+            timestamp_html = (
+                f'<span class="evidence-time">{timestamp}</span>'
+                if timestamp
+                else ""
+            )
+
             blocks.append(
                 f"""
                 <div class="evidence">
-                    <span class="evidence-label">Evidence</span>
-                    <span class="evidence-time">{timestamp}</span>
-                    <span class="evidence-text">{text}</span>
+
+                    <span class="evidence-label">
+                        Evidence
+                    </span>
+
+                    {speaker_html}
+
+                    {timestamp_html}
+
+                    <span class="evidence-text">
+                        {text}
+                    </span>
+
                 </div>
                 """
             )
@@ -775,6 +801,100 @@ def build_app(
             gr.update(visible=False),
         )
 
+    def ui_ask_meetingos(query):
+        result = ask_meetingos(query)
+
+        answer = esc(
+            result.get("answer", "No answer available.")
+        )
+
+        reasoning = esc(
+            result.get("reasoning", "")
+        )
+
+        sources = result.get("sources", []) or []
+
+        source_cards = []
+
+        for source in sources:
+            meeting_id = esc(source.get("meeting_id", ""))
+            meeting_topic = esc(
+                source.get("meeting_topic", "Meeting")
+            )
+            speaker = esc(
+                source.get("speaker", "Unknown speaker")
+            )
+            timestamp = esc(
+                source.get("timestamp", "")
+            )
+            evidence = esc(
+                source.get("evidence", "")
+            )
+
+            source_type = esc(
+                source.get(
+                    "source_type",
+                    "Transcript",
+                )
+            )
+            
+            source_cards.append(
+                f"""
+                <div class="ask-source">
+                    <div class="ask-source-header">
+                        <strong>{meeting_topic}</strong>
+                        <span>Meeting #{meeting_id}</span>
+                    </div>
+            
+                    <div class="ask-source-meta">
+                        <strong>{speaker}</strong>
+                        <span>{timestamp}</span>
+                        <span>{source_type}</span>
+                    </div>
+            
+                    <div class="ask-source-evidence">
+                        “{evidence}”
+                    </div>
+                </div>
+                """
+            )
+
+        sources_html = "".join(source_cards)
+
+        if sources_html:
+            sources_section = f"""
+            <div class="ask-sources">
+                <div class="section-label">SOURCES</div>
+                {sources_html}
+            </div>
+            """
+        else:
+            sources_section = ""
+
+        reasoning_section = (
+            f"""
+            <div class="ask-reasoning">
+                <div class="section-label">REASONING</div>
+                <p>{reasoning}</p>
+            </div>
+            """
+            if reasoning
+            else ""
+        )
+
+        return f"""
+        <div class="ask-answer">
+            <div class="section-label">MEETINGOS</div>
+            <div class="ask-answer-text">
+                {answer}
+            </div>
+        </div>
+
+        {reasoning_section}
+
+        {sources_section}
+        """
+
     def ui_update_mapping_visibility(choice):
         if choice == "Yes":
             return (
@@ -1037,6 +1157,29 @@ def build_app(
 
     css = """
     .gradio-container { max-width: 1250px !important; margin: 0 auto !important; }
+    .ask-meetingos {max-width: 1000px; margin: 0 auto 36px auto;}
+    
+    .ask-meetingos textarea {font-size: 16px !important; min-height: 70px !important;}
+    
+    .ask-answer {margin-top: 20px; padding: 24px; border: 1px solid #2b2b2b; border-radius: 16px; background: #111111;}
+    
+    .ask-answer-text {font-size: 18px; line-height: 1.6; margin-top: 8px;}
+    
+    .ask-reasoning {margin-top: 12px; padding: 18px 24px; border-left: 3px solid #444; background: #101010;}
+    
+    .ask-reasoning p {margin: 8px 0 0; line-height: 1.5; font-style: italic; opacity: 0.9;}
+    
+    .ask-sources {margin-top: 24px;}
+    
+    .ask-source {margin-top: 10px; padding: 16px 18px; border: 1px solid #292929; border-radius: 12px; background: #0f0f0f;}
+    
+    .ask-source-header {display: flex; justify-content: space-between; gap: 12px;}
+    
+    .ask-source-header span {opacity: 0.55; font-size: 13px;}
+    
+    .ask-source-meta {display: flex; gap: 12px; margin-top: 8px; font-size: 13px; opacity: 0.75;}
+    
+    .ask-source-evidence {margin-top: 10px; line-height: 1.5; font-style: italic; opacity: 0.9;}
     #header { text-align: center; margin-bottom: 30px; }
     #header h1 { font-size: 44px; margin-bottom: 6px; }
     #header p { opacity: 0.7; font-size: 17px; }
@@ -1072,6 +1215,7 @@ def build_app(
     .action-meta { display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; opacity: 0.75; }
     .action-meta span { display: flex; flex-direction: column; gap: 2px; }
     .evidence { margin-top: 12px; padding: 10px 12px; border-left: 2px solid rgba(255,255,255,0.20); font-size: 12px; opacity: 0.62; line-height: 1.45; }
+    .evidence-speaker { font-weight: 700; margin-left: 10px;}
     .evidence-label { font-weight: 700; margin-right: 8px; }
     .evidence-time { font-weight: 700; margin-right: 8px; }
     .evidence-text { font-style: italic; }
@@ -1241,7 +1385,39 @@ def build_app(
         speaker_state = gr.State({})
 
         # -----------------------------------------------------
-        # 4. CURRENT MEETING
+        # 4. ASK MEETINGOS
+        # -----------------------------------------------------
+
+        gr.Markdown("## Ask MeetingOS")
+
+        with gr.Column(elem_classes=["ask-meetingos"]):
+        
+            ask_input = gr.Textbox(
+                placeholder="Ask anything about your meetings...",
+                show_label=False,
+                lines=2,
+            )
+
+            with gr.Row():
+                ask_button = gr.Button(
+                    "Ask MeetingOS",
+                    variant="primary",
+                )
+
+                clear_ask_button = gr.Button(
+                    "Clear",
+                    variant="secondary",
+                )
+
+            ask_output = gr.HTML(
+                '<div class="empty-state">'
+                'Ask a question to search across your saved meetings.'
+                '</div>'
+            )
+
+
+        # -----------------------------------------------------
+        # 5. CURRENT MEETING
         # -----------------------------------------------------
 
         gr.Markdown("## Current Meeting")
@@ -1252,7 +1428,7 @@ def build_app(
         visual_analytics_output = gr.HTML("")
 
         # -----------------------------------------------------
-        # 5. WORKSPACE
+        # 6. WORKSPACE
         # -----------------------------------------------------
 
         gr.Markdown("## Workspace")
@@ -1413,6 +1589,24 @@ def build_app(
             fn=ui_search,
             inputs=[search_input],
             outputs=[history_dropdown],
+        )
+
+        ask_button.click(
+            fn=ui_ask_meetingos,
+            inputs=[ask_input],
+            outputs=[ask_output],
+            show_progress="minimal",
+        )
+
+        clear_ask_button.click(
+            fn=lambda: (
+                "",
+                '<div class="empty-state">'
+                'Ask a question to search across your saved meetings.'
+                '</div>'
+            ),
+            inputs=[],
+            outputs=[ask_input, ask_output],
         )
 
         history_dropdown.change(

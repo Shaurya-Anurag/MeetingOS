@@ -1,6 +1,7 @@
 import json
 import re
 from typing import Any
+import time
 
 import requests
 
@@ -246,28 +247,124 @@ def validate_visual_insights(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return validated[:12]
 
 
+def has_plausible_business_metrics(transcript: str) -> bool:
+    """Conservatively detect transcripts worth sending to metric extraction."""
+
+    text = (transcript or "").lower()
+
+    # Explicit monetary amounts, percentages, and currency values.
+    if re.search(
+        r"(?:₹|\\$|€|£)\\s*\\d|\\d+(?:\\.\\d+)?\\s*%",
+        text,
+    ):
+        return True
+
+    # Business metrics and measurable operational quantities.
+    metric_terms = re.search(
+        r"\b(?:"
+        r"revenue|sales|profit|loss|costs?|prices?|budget|"
+        r"market share|growth|conversion rate|retention rate|"
+        r"response time|processing time|turnaround time|"
+        r"customer count|number of customers|number of users|"
+        r"signups|registrations|orders|units sold|"
+        r"average|median|percentage|percent|margin|"
+        r"latency|throughput|error rate|failure rate"
+        r")\b",
+        text,
+    )
+
+    if metric_terms and re.search(r"\d", text):
+        return True
+
+    # Explicit comparisons, e.g. "increased from 18 to 25".
+    if re.search(
+        r"\b(?:increased|decreased|grew|fell|rose|dropped|"
+        r"improved|reduced|changed)\b"
+        r".{0,100}\bfrom\s+\d+(?:,\d{3})*(?:\.\d+)?"
+        r".{0,40}\bto\s+\d+(?:,\d{3})*(?:\.\d+)?",
+        text,
+    ):
+        return True
+
+    return False
+
+
 def extract_visual_insights(transcript: str) -> list[dict[str, Any]]:
     if not transcript or not transcript.strip():
         return []
-
+    
+    if not has_plausible_business_metrics(transcript):
+        print(
+            "[TIMING] Visual insights skipped: "
+            "no plausible quantitative business metric detected."
+        )
+        return []
+    
     payload = {
         "model": MODEL,
         "stream": False,
         "think": False,
         "format": "json",
-        "temperature": 0.0,
-        "num_predict": 1400,
+        "options": {
+            "temperature": 0.0,
+            "num_predict": 1400,
+        },
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": transcript},
         ],
     }
 
+    started = time.perf_counter()
+
     try:
-        response = requests.post(OLLAMA_URL, json=payload, timeout=TIMEOUT)
+        print(
+            f"[TIMING] Visual insights started | "
+            f"Transcript chars: {len(transcript)}"
+        )
+
+        response = requests.post(
+            OLLAMA_URL,
+            json=payload,
+            timeout=TIMEOUT,
+        )
         response.raise_for_status()
         body = response.json()
+
+        print(
+            f"[TIMING] Visual insights HTTP: "
+            f"{time.perf_counter() - started:.2f}s"
+        )
+
+        stats = {
+            "total_duration": body.get("total_duration"),
+            "load_duration": body.get("load_duration"),
+            "prompt_eval_duration": body.get("prompt_eval_duration"),
+            "eval_duration": body.get("eval_duration"),
+            "prompt_eval_count": body.get("prompt_eval_count"),
+            "eval_count": body.get("eval_count"),
+        }
+
+        print(f"[TIMING] Visual insights Ollama stats: {stats}")
+
         raw = body.get("message", {}).get("content", "")
-        return validate_visual_insights(_parse_json(raw))
-    except (requests.RequestException, ValueError, TypeError):
+        parsed = _parse_json(raw)
+        validated = validate_visual_insights(parsed)
+
+        print(
+            f"[TIMING] Visual insights validation: "
+            f"{time.perf_counter() - started:.2f}s total | "
+            f"Raw chars: {len(raw)} | "
+            f"Valid insights: {len(validated)}"
+        )
+
+        return validated
+
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        print(
+            f"[TIMING] Visual insights failed after "
+            f"{time.perf_counter() - started:.2f}s: "
+            f"{type(exc).__name__}: {exc}"
+        )
         return []
+
