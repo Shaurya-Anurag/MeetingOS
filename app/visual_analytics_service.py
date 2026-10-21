@@ -292,14 +292,14 @@ def has_plausible_business_metrics(transcript: str) -> bool:
 def extract_visual_insights(transcript: str) -> list[dict[str, Any]]:
     if not transcript or not transcript.strip():
         return []
-    
+
     if not has_plausible_business_metrics(transcript):
         print(
             "[TIMING] Visual insights skipped: "
             "no plausible quantitative business metric detected."
         )
         return []
-    
+
     payload = {
         "model": MODEL,
         "stream": False,
@@ -367,4 +367,3 @@ def extract_visual_insights(transcript: str) -> list[dict[str, Any]]:
             f"{type(exc).__name__}: {exc}"
         )
         return []
-

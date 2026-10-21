@@ -837,7 +837,7 @@ def build_app(
                     "Transcript",
                 )
             )
-            
+
             source_cards.append(
                 f"""
                 <div class="ask-source">
@@ -845,13 +845,13 @@ def build_app(
                         <strong>{meeting_topic}</strong>
                         <span>Meeting #{meeting_id}</span>
                     </div>
-            
+
                     <div class="ask-source-meta">
                         <strong>{speaker}</strong>
                         <span>{timestamp}</span>
                         <span>{source_type}</span>
                     </div>
-            
+
                     <div class="ask-source-evidence">
                         “{evidence}”
                     </div>
@@ -1158,27 +1158,27 @@ def build_app(
     css = """
     .gradio-container { max-width: 1250px !important; margin: 0 auto !important; }
     .ask-meetingos {max-width: 1000px; margin: 0 auto 36px auto;}
-    
+
     .ask-meetingos textarea {font-size: 16px !important; min-height: 70px !important;}
-    
+
     .ask-answer {margin-top: 20px; padding: 24px; border: 1px solid #2b2b2b; border-radius: 16px; background: #111111;}
-    
+
     .ask-answer-text {font-size: 18px; line-height: 1.6; margin-top: 8px;}
-    
+
     .ask-reasoning {margin-top: 12px; padding: 18px 24px; border-left: 3px solid #444; background: #101010;}
-    
+
     .ask-reasoning p {margin: 8px 0 0; line-height: 1.5; font-style: italic; opacity: 0.9;}
-    
+
     .ask-sources {margin-top: 24px;}
-    
+
     .ask-source {margin-top: 10px; padding: 16px 18px; border: 1px solid #292929; border-radius: 12px; background: #0f0f0f;}
-    
+
     .ask-source-header {display: flex; justify-content: space-between; gap: 12px;}
-    
+
     .ask-source-header span {opacity: 0.55; font-size: 13px;}
-    
+
     .ask-source-meta {display: flex; gap: 12px; margin-top: 8px; font-size: 13px; opacity: 0.75;}
-    
+
     .ask-source-evidence {margin-top: 10px; line-height: 1.5; font-style: italic; opacity: 0.9;}
     #header { text-align: center; margin-bottom: 30px; }
     #header h1 { font-size: 44px; margin-bottom: 6px; }
@@ -1391,7 +1391,7 @@ def build_app(
         gr.Markdown("## Ask MeetingOS")
 
         with gr.Column(elem_classes=["ask-meetingos"]):
-        
+
             ask_input = gr.Textbox(
                 placeholder="Ask anything about your meetings...",
                 show_label=False,
