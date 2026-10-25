@@ -743,6 +743,7 @@ def build_app(
     prepare_meeting,
     finalize_speakers,
     generate_brief,
+    retry_meeting,
     load_saved_meeting,
     remove_saved_meeting,
     list_tasks,
@@ -752,7 +753,10 @@ def build_app(
 ):
 
     def ui_prepare_meeting(audio_path):
-        result = prepare_meeting(audio_path)
+        from app.pipeline_diagnostics import new_run_id
+
+        run_id = new_run_id()
+        result = prepare_meeting(audio_path, run_id=run_id)
         if not result["ok"]:
             return (
                 "",
@@ -764,6 +768,8 @@ def build_app(
                 *[gr.update(visible=False, value="") for _ in range(6)],
                 gr.update(visible=False),
                 gr.update(visible=False),
+                run_id,
+                result.get("meeting_id"),
             )
 
         speakers = result["speakers"]
@@ -799,6 +805,8 @@ def build_app(
             *name_updates,
             gr.update(visible=True, value="Continue"),
             gr.update(visible=False),
+            run_id,
+            result.get("meeting_id"),
         )
 
     def ui_ask_meetingos(query):
@@ -947,8 +955,20 @@ def build_app(
             gr.update(visible=True, value="Generate Meeting Intelligence"),  # generate_button
         )
 
-    def ui_generate_brief(transcript, speakers, topic):
-        result = generate_brief(transcript, speakers, topic)
+    def ui_generate_brief(
+        transcript,
+        speakers,
+        topic,
+        run_id,
+        meeting_id,
+    ):
+        result = generate_brief(
+            transcript,
+            speakers,
+            topic,
+            run_id=run_id,
+            meeting_id=meeting_id,
+        )
         if not result["ok"]:
             return (
                 '<div class="empty-page"><strong>No meeting is ready to generate.</strong><br>Analyze a recording and complete speaker review first.</div>',
@@ -986,6 +1006,71 @@ def build_app(
             "",
         )
 
+    def ui_retry_saved_meeting(meeting_id):
+        if meeting_id is None:
+            return (
+                '<div class="empty-page">'
+                '<strong>Select a meeting first.</strong><br>'
+                'Choose a saved meeting from History & Search.'
+                '</div>',
+                "",
+                "",
+                gr.update(choices=build_history_choices(), value=None),
+                gr.update(),
+                gr.update(),
+                "",
+            )
+
+        result = retry_meeting(meeting_id)
+
+        if not result.get("ok"):
+            return (
+                '<div class="empty-page">'
+                '<strong>Retry failed.</strong><br>'
+                f'{esc(result.get("error", "Unknown error"))}'
+                '</div>',
+                "",
+                "",
+                gr.update(
+                    choices=build_history_choices(),
+                    value=meeting_id,
+                ),
+                gr.update(),
+                gr.update(),
+                "",
+            )
+
+        intelligence_html = render_meeting_report(
+            result["topic"],
+            result["intelligence"],
+            saved=False,
+        )
+        analytics_html = render_meeting_metrics(result["analytics"])
+        visual_html = build_visual_analytics_html(
+            result.get("visual_insights", [])
+        )
+
+        task_choices = build_task_choices("All")
+        first_task = task_choices[0][1] if task_choices else None
+        first_status = (
+            (get_selected_task(first_task) or {}).get("status", "Pending")
+            if first_task is not None
+            else "Pending"
+        )
+
+        return (
+            intelligence_html,
+            analytics_html,
+            visual_html,
+            gr.update(
+                choices=build_history_choices(),
+                value=meeting_id,
+            ),
+            gr.update(choices=task_choices, value=first_task),
+            gr.update(value=first_status),
+            '<div class="success-message">Meeting processing completed successfully.</div>',
+        )
+
     def ui_refresh_workspace_analytics():
         return build_workspace_analytics_html(workspace_analytics_data())
 
@@ -997,12 +1082,13 @@ def build_app(
     def ui_history_selection(meeting_id):
         enabled = meeting_id is not None
         return (
-            gr.update(interactive=enabled),
-            gr.update(interactive=enabled),
-            gr.update(interactive=enabled),
-            gr.update(),
-            gr.update(),
-            gr.update(),
+            gr.update(interactive=enabled),  # Open
+            gr.update(interactive=enabled),  # Close
+            gr.update(interactive=enabled),  # Delete
+            gr.update(interactive=enabled),  # Retry
+            gr.update(),                     # Update task
+            gr.update(),                     # Task dropdown
+            gr.update(),                     # Task status
             "",
         )
 
@@ -1383,6 +1469,8 @@ def build_app(
 
         transcript_state = gr.State("")
         speaker_state = gr.State({})
+        run_id_state = gr.State(None)
+        meeting_id_state = gr.State(None)
 
         # -----------------------------------------------------
         # 4. ASK MEETINGOS
@@ -1484,9 +1572,25 @@ def build_app(
                 search_button = gr.Button("Search", variant="secondary", scale=1)
 
             with gr.Row():
-                open_meeting_button = gr.Button("Open Meeting", variant="secondary", interactive=False)
-                close_meeting_button = gr.Button("Close Meeting", variant="secondary", interactive=False)
-                delete_meeting_button = gr.Button("Delete Meeting", variant="stop", interactive=False)
+                open_meeting_button = gr.Button(
+                    "Open Meeting",
+                    variant="secondary",
+                    interactive=False,
+                )
+                close_meeting_button = gr.Button(
+                    "Close Meeting",
+                    variant="secondary",
+                    interactive=False,
+                )
+                retry_meeting_button = gr.Button(
+                    "Retry Processing",
+                    variant="primary",
+                )
+                delete_meeting_button = gr.Button(
+                    "Delete Meeting",
+                    variant="stop",
+                    interactive=False,
+                )
 
         with gr.Accordion("Workspace Analytics", open=False):
             workspace_analytics_output = gr.HTML(
@@ -1533,6 +1637,8 @@ def build_app(
                 name6,
                 continue_speakers_button,
                 generate_button,
+                run_id_state,
+                meeting_id_state,
             ],
         )
 
@@ -1566,7 +1672,7 @@ def build_app(
 
         generate_event = generate_button.click(
             fn=ui_generate_brief,
-            inputs=[transcript_state, speaker_state, topic_input],
+            inputs=[transcript_state, speaker_state, topic_input, run_id_state, meeting_id_state,],
             outputs=[
                 intelligence_output,
                 analytics_output,
@@ -1616,6 +1722,7 @@ def build_app(
                 open_meeting_button,
                 close_meeting_button,
                 delete_meeting_button,
+                retry_meeting_button,
                 update_task_button,
                 task_dropdown,
                 task_status_dropdown,
@@ -1647,6 +1754,27 @@ def build_app(
         )
 
         update_task_event.then(
+            fn=ui_refresh_workspace_analytics,
+            inputs=[],
+            outputs=[workspace_analytics_output],
+        )
+
+        retry_event = retry_meeting_button.click(
+            fn=ui_retry_saved_meeting,
+            inputs=[history_dropdown],
+            outputs=[
+                intelligence_output,
+                analytics_output,
+                visual_analytics_output,
+                history_dropdown,
+                task_dropdown,
+                task_status_dropdown,
+                task_status_message,
+            ],
+            show_progress="minimal",
+        )
+
+        retry_event.then(
             fn=ui_refresh_workspace_analytics,
             inputs=[],
             outputs=[workspace_analytics_output],
@@ -1704,6 +1832,7 @@ def build_app(
                 open_meeting_button,
                 close_meeting_button,
                 delete_meeting_button,
+                retry_meeting_button,
                 update_task_button,
                 task_dropdown,
                 task_status_dropdown,
@@ -1741,6 +1870,7 @@ def build_app(
                 open_meeting_button,
                 close_meeting_button,
                 delete_meeting_button,
+                retry_meeting_button,
                 update_task_button,
                 task_dropdown,
                 task_status_dropdown,
