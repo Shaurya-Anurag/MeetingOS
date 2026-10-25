@@ -64,6 +64,7 @@ def migrate_meeting_lifecycle(cursor):
     }
 
     migrations = {
+        "original_transcript": "TEXT",
         "status": "TEXT NOT NULL DEFAULT 'ready'",
         "current_stage": "TEXT",
         "run_id": "TEXT",
@@ -89,6 +90,7 @@ def initialize_database():
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS meetings (
+                original_transcript TEXT,
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 topic TEXT NOT NULL,
                 created_at TEXT NOT NULL,
@@ -323,9 +325,10 @@ def save_transcription(
 
     with get_connection() as connection:
         cursor = connection.execute(
-            """
+                        """
             UPDATE meetings
-            SET transcript = ?,
+            SET original_transcript = COALESCE(original_transcript, transcript, ?),
+                transcript = ?,
                 speaker_data = ?,
                 duration_seconds = COALESCE(?, duration_seconds),
                 status = 'analyzing',
@@ -336,6 +339,7 @@ def save_transcription(
             WHERE id = ? AND run_id = ?
             """,
             (
+                transcript,
                 transcript,
                 json.dumps(speaker_data or {}, ensure_ascii=False),
                 duration_seconds,

@@ -97,6 +97,16 @@ def render_evidence(evidence) -> str:
         timestamp = esc(item.get("timestamp", ""))
         text = esc(item.get("text", ""))
 
+
+        verification_status = item.get("verification_status", "unverified")
+
+        verification_html = (
+            '<span class="evidence-verified">Transcript matched</span>'
+            if verification_status == "verified"
+            else '<span class="evidence-unverified">Unverified evidence</span>'
+        )
+
+
         if speaker or timestamp or text:
 
             speaker_html = (
@@ -126,6 +136,7 @@ def render_evidence(evidence) -> str:
                     <span class="evidence-text">
                         {text}
                     </span>
+                    {verification_html}
 
                 </div>
                 """
@@ -1305,6 +1316,8 @@ def build_app(
     .evidence-label { font-weight: 700; margin-right: 8px; }
     .evidence-time { font-weight: 700; margin-right: 8px; }
     .evidence-text { font-style: italic; }
+    .evidence-verified {display: inline-block; margin-left: 8px; color: #86efac; font-size: 10px; font-weight: 600;}
+    .evidence-unverified {display: inline-block; margin-left: 8px; color: #fbbf24; font-size: 10px; font-weight: 600;}
     .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     .empty-state { border: 1px dashed rgba(255,255,255,0.18); border-radius: 12px; padding: 18px; opacity: 0.65; }
     .empty-state.success { border-color: rgba(70, 200, 120, 0.25); }

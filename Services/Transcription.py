@@ -65,22 +65,50 @@ def prepare_diarization_audio(audio_path: str) -> str:
     return wav_path
 
 
+
 def find_speaker(start: float, end: float, speaker_segments: list) -> str:
-    """Assign the speaker with the greatest temporal overlap."""
-    best_speaker = "UNKNOWN"
-    best_overlap = 0.0
+    """Assign a speaker only when temporal overlap is sufficiently reliable."""
+    duration = end - start
+    if duration <= 0:
+        return "UNKNOWN"
+
+    overlaps = {}
 
     for speaker_segment in speaker_segments:
+        try:
+            speaker = speaker_segment.get("speaker")
+            segment_start = float(speaker_segment["start"])
+            segment_end = float(speaker_segment["end"])
+        except (AttributeError, KeyError, TypeError, ValueError):
+            continue
+
+        if not speaker or segment_end <= segment_start:
+            continue
+
         overlap = max(
             0.0,
-            min(end, speaker_segment["end"])
-            - max(start, speaker_segment["start"]),
+            min(end, segment_end) - max(start, segment_start),
         )
-        if overlap > best_overlap:
-            best_overlap = overlap
-            best_speaker = speaker_segment["speaker"]
+
+        if overlap > 0:
+            overlaps[speaker] = overlaps.get(speaker, 0.0) + overlap
+
+    if not overlaps:
+        return "UNKNOWN"
+
+    ranked = sorted(overlaps.items(), key=lambda item: item[1], reverse=True)
+    best_speaker, best_overlap = ranked[0]
+
+    # Require meaningful coverage of the utterance.
+    if best_overlap / duration < 0.20:
+        return "UNKNOWN"
+
+    # If another speaker has nearly the same overlap, attribution is ambiguous.
+    if len(ranked) > 1 and ranked[1][1] >= best_overlap * 0.80:
+        return "UNKNOWN"
 
     return best_speaker
+
 
 
 def transcribe_audio(
