@@ -387,6 +387,14 @@ def _flatten_intelligence(
                     query_numbers = _numbers(query)
                     evidence_numbers = _numbers(evidence_text)
 
+                    evidence_score = (
+                        base_score
+                        + _score_text(
+                            query,
+                            evidence_text,
+                        )
+                    )
+
                     if query_numbers & evidence_numbers:
                         evidence_score += 15.0
 
