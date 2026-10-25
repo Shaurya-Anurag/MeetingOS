@@ -374,16 +374,32 @@ def generate_brief(
     except Exception as exc:
         # Preserve the transcript and record the stage that actually failed.
         try:
-            update_meeting_lifecycle(
-                meeting_id,
-                "needs_retry",
-                current_stage=current_stage,
-                run_id=run_id,
-                error_message=(
-                    "Meeting analysis did not complete. The transcript remains saved; retry processing."
-                ),
-                error_type=type(exc).__name__,
-            )
+            meeting_state = get_meeting(meeting_id)
+            if (
+                meeting_state
+                and meeting_state.get("status")
+                not in {"ready", "completed_with_warnings"}
+            ):
+                has_transcript = bool(
+                    (meeting_state.get("transcript") or "").strip()
+                )
+                update_meeting_lifecycle(
+                    meeting_id,
+                    "needs_retry" if has_transcript else "failed",
+                    current_stage=current_stage,
+                    run_id=run_id,
+                    error_message=(
+                        f"Processing failed during {current_stage}. "
+                        + (
+                            "The saved transcript is available for retry."
+                            if has_transcript
+                            else "No saved transcript is available; reprocess the recording."
+                        )
+                    ),
+                    error_type=type(exc).__name__,
+                )
+        except Exception:
+            pass
         except Exception:
             pass
 
