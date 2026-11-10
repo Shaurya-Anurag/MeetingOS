@@ -216,6 +216,38 @@ def prepare_meeting(
     }
 
 
+def validate_speaker_review(original_transcript: str, reviewed_transcript: str) -> dict[str, Any]:
+    """Validate that review edits change speaker labels only, not timing or words."""
+    original_lines = [line for line in (original_transcript or "").splitlines() if line.strip()]
+    reviewed_lines = [line for line in (reviewed_transcript or "").splitlines() if line.strip()]
+    if len(original_lines) != len(reviewed_lines):
+        raise ValueError("Transcript review changed the number of utterance lines.")
+
+    allowed = set(extract_speaker_info(original_transcript))
+    allowed.add("UNKNOWN")
+    corrected = []
+    changed = 0
+
+    for index, (original, reviewed) in enumerate(zip(original_lines, reviewed_lines), 1):
+        original_match = _SPEAKER_LINE_PATTERN.match(original.strip())
+        reviewed_match = _SPEAKER_LINE_PATTERN.match(reviewed.strip())
+        if original_match:
+            if not reviewed_match:
+                raise ValueError(f"Line {index}: preserve the timestamped utterance format.")
+            if original_match.group(1) != reviewed_match.group(1) or original_match.group(2) != reviewed_match.group(2) or original_match.group(4) != reviewed_match.group(4):
+                raise ValueError(f"Line {index}: only the speaker label may be changed.")
+            speaker = reviewed_match.group(3).upper()
+            if speaker not in allowed:
+                raise ValueError(f"Line {index}: '{speaker}' is not a detected speaker or UNKNOWN.")
+            changed += speaker != original_match.group(3).upper()
+            corrected.append(reviewed.strip())
+        else:
+            if reviewed.strip() != original.strip():
+                raise ValueError(f"Line {index}: this unstructured line cannot be edited in speaker review.")
+            corrected.append(original)
+    return {"transcript": "\\n".join(corrected), "changed_labels": int(changed)}
+
+
 def finalize_speakers(
     transcript: str,
     speakers: dict,
