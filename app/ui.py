@@ -8,6 +8,7 @@ import gradio as gr
 from app.database import get_all_meetings, search_meetings, get_tasks
 from app.ask_service import ask_meetingos
 from app.visual_analytics_service import validate_visual_insights
+from app.main import transcript_to_review_rows, validate_speaker_review_rows
 
 
 # =========================================================
@@ -808,7 +809,7 @@ def build_app(
                 value=build_speaker_setup_html(speakers),
                 visible=True,
             ),
-            gr.update(value=result["transcript"], visible=True),
+            gr.update(value=transcript_to_review_rows(result["transcript"]), visible=True),
             gr.update(
                 value=None,
                 visible=True,
@@ -929,15 +930,30 @@ def build_app(
             )
         return gr.update(visible=False), gr.update(visible=False)
 
-    def ui_finalize_speakers(confirmed, original_transcript, transcript, speakers, confirmation, *names):
+    def ui_finalize_speakers(confirmed, original_transcript, reviewed_rows, speakers, confirmation, *names):
         if not confirmed:
             return (
                 original_transcript,
                 *[gr.update() for _ in range(13)],
             )
 
+        try:
+            review = validate_speaker_review_rows(original_transcript, reviewed_rows)
+        except ValueError as exc:
+            return (
+                original_transcript,
+                gr.update(visible=True),
+                gr.update(value=f'<div class="empty-state"><strong>Speaker review rejected.</strong><br>{esc(exc)}</div>', visible=True),
+                gr.update(visible=True, value=reviewed_rows),
+                gr.update(visible=True),
+                gr.update(visible=True),
+                *[gr.update(visible=True) for _ in range(6)],
+                gr.update(visible=True),
+                gr.update(visible=False),
+            )
+
         result = finalize_speakers(
-            transcript,
+            review["transcript"],
             speakers,
             confirmation,
             list(names),
@@ -949,7 +965,7 @@ def build_app(
                 original_transcript,
                 gr.update(visible=True),
                 gr.update(value=f'<div class="empty-state"><strong>Transcript correction rejected.</strong><br>{esc(result.get("error", "Review the edited transcript and try again."))}</div>', visible=True),
-                gr.update(visible=True, value=transcript),
+                gr.update(visible=True, value=transcript_to_review_rows(original_transcript)),
                 gr.update(visible=True),
                 gr.update(visible=True),
                 *[gr.update(visible=True) for _ in range(6)],
@@ -963,7 +979,7 @@ def build_app(
             result.get("transcript", transcript),
             gr.update(visible=False),  # speaker_review_heading
             gr.update(visible=False),  # speaker_setup
-            gr.update(visible=False, value=""),  # transcript_editor
+            gr.update(visible=False, value=[]),  # speaker_review_table
             gr.update(visible=False),  # speaker_confirmation
             gr.update(visible=False),  # speaker_mapping_group
             gr.update(visible=False, value=""),  # name1
@@ -1171,7 +1187,7 @@ def build_app(
         return (
             gr.update(visible=False),  # speaker_review_heading
             gr.update(visible=False),  # speaker_setup
-            gr.update(visible=False, value=""),  # transcript_editor
+            gr.update(visible=False, value=[]),  # speaker_review_table
             gr.update(visible=False),  # speaker_confirmation
             gr.update(visible=False),  # speaker_mapping_group
             gr.update(visible=False, value=""),
@@ -1343,7 +1359,7 @@ def build_app(
     .speaker-card-heading h3 { margin: 5px 0 10px; }
     .speaker-token { padding: 4px 8px; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #a8b8d8; background: rgba(120,150,210,0.08); font-size: 11px; }
     .transcript-review-help { margin: 18px 0 8px; padding: 13px 16px; border: 1px solid rgba(120,150,210,0.18); border-left: 3px solid #7896d2; border-radius: 10px; background: rgba(120,150,210,0.06); font-size: 13px; line-height: 1.55; }
-    #transcript-editor textarea { min-height: 390px !important; max-height: 620px !important; overflow-y: auto !important; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; font-size: 12px !important; line-height: 1.7 !important; letter-spacing: 0 !important; tab-size: 2; }
+    #speaker-review-table { min-height: 390px !important; max-height: 620px !important; overflow-y: auto !important; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; font-size: 12px !important; line-height: 1.7 !important; letter-spacing: 0 !important; tab-size: 2; }
     #transcript-editor textarea:focus { border-color: rgba(120,150,210,0.75) !important; box-shadow: 0 0 0 2px rgba(120,150,210,0.12) !important; }
     .workspace-analytics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 12px 0 18px 0; }
     .workspace-metric { border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; padding: 16px; }
@@ -1465,12 +1481,15 @@ def build_app(
             elem_classes=["transcript-review-help"],
             visible=False,
         )
-        transcript_editor = gr.Textbox(
-            label="Transcript · editable",
-            lines=16,
-            max_lines=32,
-            placeholder="Timestamped transcript will appear here after analysis.",
-            elem_id="transcript-editor",
+        speaker_review_table = gr.Dataframe(
+            headers=["Timestamp", "Speaker", "Utterance"],
+            datatype=["str", "str", "str"],
+            row_count=(0, "dynamic"),
+            col_count=(3, "fixed"),
+            label="Review detected speakers · edit the Speaker column",
+            interactive=True,
+            wrap=True,
+            elem_id="speaker-review-table",
             visible=False,
         )
         speaker_confirmation = gr.Radio(
@@ -1674,7 +1693,7 @@ def build_app(
                 speaker_state,
                 speaker_review_heading,
                 speaker_setup,
-                transcript_editor,
+                speaker_review_table,
                 speaker_confirmation,
                 speaker_mapping_group,
                 name1,
@@ -1704,9 +1723,9 @@ def build_app(
 
         speaker_confirm_button.click(
             fn=ui_confirm_speakers,
-            inputs=[transcript_state, transcript_editor, speaker_state, speaker_confirmation, name1, name2, name3, name4, name5, name6],
+            inputs=[transcript_state, speaker_review_table, speaker_state, speaker_confirmation, name1, name2, name3, name4, name5, name6],
             outputs=[
-                transcript_state, speaker_review_heading, speaker_setup, transcript_editor, speaker_confirmation,
+                transcript_state, speaker_review_heading, speaker_setup, speaker_review_table, speaker_confirmation,
                 speaker_mapping_group, name1, name2, name3, name4, name5, name6,
                 continue_speakers_button, generate_button, speaker_confirm_modal,
             ],
@@ -1837,7 +1856,7 @@ def build_app(
                 visual_analytics_output,
                 speaker_review_heading,
                 speaker_setup,
-                transcript_editor,
+                speaker_review_table,
                 speaker_confirmation,
                 speaker_mapping_group,
                 name1,
@@ -1861,7 +1880,7 @@ def build_app(
                 visual_analytics_output,
                 speaker_review_heading,
                 speaker_setup,
-                transcript_editor,
+                speaker_review_table,
                 speaker_confirmation,
                 speaker_mapping_group,
                 name1,
@@ -1901,7 +1920,7 @@ def build_app(
             inputs=[history_dropdown],
             outputs=[
                 history_dropdown, intelligence_output, analytics_output, visual_analytics_output,
-                speaker_review_heading, speaker_setup, transcript_editor, speaker_confirmation, speaker_mapping_group,
+                speaker_review_heading, speaker_setup, speaker_review_table, speaker_confirmation, speaker_mapping_group,
                 name1, name2, name3, name4, name5, name6,
                 continue_speakers_button, generate_button, delete_confirm_modal,
             ],
