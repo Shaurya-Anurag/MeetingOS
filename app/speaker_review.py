@@ -4,9 +4,9 @@ import re
 from typing import Any
 
 SPEAKER_LINE_PATTERN = re.compile(
-    r"^\\s*\\[\\s*(\\d+(?:\\.\\d+)?)s\\s*->\\s*"
-    r"(\\d+(?:\\.\\d+)?)s\\s*\\]\\s*"
-    r"(SPEAKER_\\d+|UNKNOWN)\\s*:\\s*(.*?)\\s*$",
+    r"^\s*\[\s*(\d+(?:\.\d+)?)s\s*->\s*"
+    r"(\d+(?:\.\d+)?)s\s*\]\s*"
+    r"(SPEAKER_\d+|UNKNOWN)\s*:\s*(.*?)\s*$",
     re.IGNORECASE,
 )
 
@@ -56,4 +56,4 @@ def validate_speaker_review_rows(
         changed += speaker != original[1]
         start, end = original[0].split(" -> ")
         corrected_lines.append(f"[{start} -> {end}] {speaker}: {original[2]}")
-    return {"transcript": "\\n".join(corrected_lines), "changed_labels": int(changed)}
+    return {"transcript": "\n".join(corrected_lines), "changed_labels": int(changed)}
