@@ -933,7 +933,7 @@ def build_app(
         if not confirmed:
             return (
                 transcript,
-                *[gr.update() for _ in range(12)],
+                *[gr.update() for _ in range(13)],
             )
 
         result = finalize_speakers(
@@ -1814,6 +1814,7 @@ def build_app(
                 visual_analytics_output,
                 speaker_review_heading,
                 speaker_setup,
+                transcript_editor,
                 speaker_confirmation,
                 speaker_mapping_group,
                 name1,
