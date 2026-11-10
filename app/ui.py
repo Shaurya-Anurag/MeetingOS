@@ -8,7 +8,7 @@ import gradio as gr
 from app.database import get_all_meetings, search_meetings, get_tasks
 from app.ask_service import ask_meetingos
 from app.visual_analytics_service import validate_visual_insights
-from app.main import transcript_to_review_rows, validate_speaker_review_rows
+from app.speaker_review import transcript_to_review_rows, validate_speaker_review_rows
 
 
 # =========================================================
