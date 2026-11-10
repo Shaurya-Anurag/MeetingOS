@@ -775,6 +775,7 @@ def build_app(
                 gr.update(visible=False),
                 gr.update(visible=False, value=result["error"]),
                 gr.update(visible=False),
+                gr.update(visible=False, value=""),
                 gr.update(visible=False),
                 *[gr.update(visible=False, value="") for _ in range(6)],
                 gr.update(visible=False),
@@ -807,6 +808,7 @@ def build_app(
                 value=build_speaker_setup_html(speakers),
                 visible=True,
             ),
+            gr.update(value=result["transcript"], visible=True),
             gr.update(
                 value=None,
                 visible=True,
@@ -944,7 +946,7 @@ def build_app(
         if not result.get("ok"):
             return (
                 result.get("transcript", transcript),
-                *[gr.update(visible=False) for _ in range(11)],
+                *[gr.update(visible=False) for _ in range(12)],
                 gr.update(visible=False),
             )
 
@@ -954,6 +956,7 @@ def build_app(
             result.get("transcript", transcript),
             gr.update(visible=False),  # speaker_review_heading
             gr.update(visible=False),  # speaker_setup
+            gr.update(visible=False, value=""),  # transcript_editor
             gr.update(visible=False),  # speaker_confirmation
             gr.update(visible=False),  # speaker_mapping_group
             gr.update(visible=False, value=""),  # name1
@@ -1161,6 +1164,7 @@ def build_app(
         return (
             gr.update(visible=False),  # speaker_review_heading
             gr.update(visible=False),  # speaker_setup
+            gr.update(visible=False, value=""),  # transcript_editor
             gr.update(visible=False),  # speaker_confirmation
             gr.update(visible=False),  # speaker_mapping_group
             gr.update(visible=False, value=""),
@@ -1439,6 +1443,13 @@ def build_app(
 
         speaker_review_heading = gr.Markdown("## Speaker Review", visible=False)
         speaker_setup = gr.HTML(visible=False)
+        transcript_editor = gr.Textbox(
+            label="Review transcript and correct speaker labels",
+            lines=14,
+            max_lines=30,
+            placeholder="Edit a line's speaker label (for example, SPEAKER_00) if diarization assigned it incorrectly.",
+            visible=False,
+        )
         speaker_confirmation = gr.Radio(
             choices=["Yes", "No"],
             label="Is the detected speaker count correct?",
@@ -1640,6 +1651,7 @@ def build_app(
                 speaker_state,
                 speaker_review_heading,
                 speaker_setup,
+                transcript_editor,
                 speaker_confirmation,
                 speaker_mapping_group,
                 name1,
@@ -1669,9 +1681,9 @@ def build_app(
 
         speaker_confirm_button.click(
             fn=ui_confirm_speakers,
-            inputs=[transcript_state, speaker_state, speaker_confirmation, name1, name2, name3, name4, name5, name6],
+            inputs=[transcript_editor, speaker_state, speaker_confirmation, name1, name2, name3, name4, name5, name6],
             outputs=[
-                transcript_state, speaker_review_heading, speaker_setup, speaker_confirmation,
+                transcript_state, speaker_review_heading, speaker_setup, transcript_editor, speaker_confirmation,
                 speaker_mapping_group, name1, name2, name3, name4, name5, name6,
                 continue_speakers_button, generate_button, speaker_confirm_modal,
             ],
@@ -1864,7 +1876,7 @@ def build_app(
             inputs=[history_dropdown],
             outputs=[
                 history_dropdown, intelligence_output, analytics_output, visual_analytics_output,
-                speaker_review_heading, speaker_setup, speaker_confirmation, speaker_mapping_group,
+                speaker_review_heading, speaker_setup, transcript_editor, speaker_confirmation, speaker_mapping_group,
                 name1, name2, name3, name4, name5, name6,
                 continue_speakers_button, generate_button, delete_confirm_modal,
             ],
