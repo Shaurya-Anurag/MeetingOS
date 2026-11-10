@@ -929,10 +929,10 @@ def build_app(
             )
         return gr.update(visible=False), gr.update(visible=False)
 
-    def ui_finalize_speakers(confirmed, transcript, speakers, confirmation, *names):
+    def ui_finalize_speakers(confirmed, original_transcript, transcript, speakers, confirmation, *names):
         if not confirmed:
             return (
-                transcript,
+                original_transcript,
                 *[gr.update() for _ in range(13)],
             )
 
@@ -941,12 +941,19 @@ def build_app(
             speakers,
             confirmation,
             list(names),
+            original_transcript=original_transcript,
         )
 
         if not result.get("ok"):
             return (
-                result.get("transcript", transcript),
-                *[gr.update(visible=False) for _ in range(12)],
+                original_transcript,
+                gr.update(visible=True),
+                gr.update(value=f'<div class="empty-state"><strong>Transcript correction rejected.</strong><br>{esc(result.get("error", "Review the edited transcript and try again."))}</div>', visible=True),
+                gr.update(visible=True, value=transcript),
+                gr.update(visible=True),
+                gr.update(visible=True),
+                *[gr.update(visible=True) for _ in range(6)],
+                gr.update(visible=True),
                 gr.update(visible=False),
             )
 
@@ -1248,8 +1255,8 @@ def build_app(
     def ui_cancel_confirm_modal():
         return gr.update(visible=False)
 
-    def ui_confirm_speakers(transcript, speakers, confirmation, *names):
-        result = ui_finalize_speakers(True, transcript, speakers, confirmation, *names)
+    def ui_confirm_speakers(original_transcript, transcript, speakers, confirmation, *names):
+        result = ui_finalize_speakers(True, original_transcript, transcript, speakers, confirmation, *names)
         return (*result, gr.update(visible=False))
 
     def ui_confirm_delete(meeting_id):
@@ -1697,7 +1704,7 @@ def build_app(
 
         speaker_confirm_button.click(
             fn=ui_confirm_speakers,
-            inputs=[transcript_editor, speaker_state, speaker_confirmation, name1, name2, name3, name4, name5, name6],
+            inputs=[transcript_state, transcript_editor, speaker_state, speaker_confirmation, name1, name2, name3, name4, name5, name6],
             outputs=[
                 transcript_state, speaker_review_heading, speaker_setup, transcript_editor, speaker_confirmation,
                 speaker_mapping_group, name1, name2, name3, name4, name5, name6,
