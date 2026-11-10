@@ -400,8 +400,6 @@ def generate_brief(
                 )
         except Exception:
             pass
-        except Exception:
-            pass
 
         emit_event(
             run_id,
