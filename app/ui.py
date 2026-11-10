@@ -965,7 +965,7 @@ def build_app(
                 original_transcript,
                 gr.update(visible=True),
                 gr.update(value=f'<div class="empty-state"><strong>Transcript correction rejected.</strong><br>{esc(result.get("error", "Review the edited transcript and try again."))}</div>', visible=True),
-                gr.update(visible=True, value=transcript_to_review_rows(original_transcript)),
+                gr.update(visible=True, value=reviewed_rows),
                 gr.update(visible=True),
                 gr.update(visible=True),
                 *[gr.update(visible=True) for _ in range(6)],
@@ -1360,7 +1360,7 @@ def build_app(
     .speaker-token { padding: 4px 8px; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #a8b8d8; background: rgba(120,150,210,0.08); font-size: 11px; }
     .transcript-review-help { margin: 18px 0 8px; padding: 13px 16px; border: 1px solid rgba(120,150,210,0.18); border-left: 3px solid #7896d2; border-radius: 10px; background: rgba(120,150,210,0.06); font-size: 13px; line-height: 1.55; }
     #speaker-review-table { min-height: 390px !important; max-height: 620px !important; overflow-y: auto !important; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; font-size: 12px !important; line-height: 1.7 !important; letter-spacing: 0 !important; tab-size: 2; }
-    #transcript-editor textarea:focus { border-color: rgba(120,150,210,0.75) !important; box-shadow: 0 0 0 2px rgba(120,150,210,0.12) !important; }
+    #speaker-review-table table { font-size: 12px !important; }\n    #speaker-review-table td, #speaker-review-table th { padding: 9px 11px !important; }\n    #speaker-review-table td:nth-child(2) { min-width: 140px; font-weight: 700; }
     .workspace-analytics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 12px 0 18px 0; }
     .workspace-metric { border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; padding: 16px; }
     .task-bars { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
