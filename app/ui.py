@@ -1220,7 +1220,7 @@ def build_app(
                 gr.update(),
                 gr.update(),
                 gr.update(),
-                *[gr.update() for _ in range(12)],
+                *[gr.update() for _ in range(13)],
             )
 
         result = remove_saved_meeting(meeting_id)
@@ -1838,6 +1838,7 @@ def build_app(
                 visual_analytics_output,
                 speaker_review_heading,
                 speaker_setup,
+                transcript_editor,
                 speaker_confirmation,
                 speaker_mapping_group,
                 name1,
