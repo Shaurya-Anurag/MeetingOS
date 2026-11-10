@@ -44,7 +44,7 @@ def build_speaker_setup_html(speakers: dict) -> str:
 
     cards = []
 
-    for index, (_, lines) in enumerate(speakers.items(), 1):
+    for index, (speaker_id, lines) in enumerate(speakers.items(), 1):
         snippets = "".join(
             f"""
             <div class="speaker-snippet">
@@ -58,7 +58,7 @@ def build_speaker_setup_html(speakers: dict) -> str:
             f"""
             <div class="topic-card">
                 <div class="topic-number">SPEAKER {index}</div>
-                <h3>Speaker {index}</h3>
+                <div class="speaker-card-heading"><h3>Speaker {index}</h3><code class="speaker-token">{esc(speaker_id)}</code></div>
                 <div class="section-label">SAMPLE UTTERANCES</div>
                 {snippets}
             </div>
@@ -1332,6 +1332,12 @@ def build_app(
     .empty-page { padding: 30px; opacity: 0.6; }
     .speaker-snippet { padding: 9px 12px; margin-top: 8px; border-left: 2px solid rgba(255,255,255,0.20); font-size: 13px; opacity: 0.75; line-height: 1.45; }
     .speaker-help { font-size: 13px; opacity: 0.65; margin-bottom: 10px; }
+    .speaker-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .speaker-card-heading h3 { margin: 5px 0 10px; }
+    .speaker-token { padding: 4px 8px; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #a8b8d8; background: rgba(120,150,210,0.08); font-size: 11px; }
+    .transcript-review-help { margin: 18px 0 8px; padding: 13px 16px; border: 1px solid rgba(120,150,210,0.18); border-left: 3px solid #7896d2; border-radius: 10px; background: rgba(120,150,210,0.06); font-size: 13px; line-height: 1.55; }
+    #transcript-editor textarea { min-height: 390px !important; max-height: 620px !important; overflow-y: auto !important; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; font-size: 12px !important; line-height: 1.7 !important; letter-spacing: 0 !important; tab-size: 2; }
+    #transcript-editor textarea:focus { border-color: rgba(120,150,210,0.75) !important; box-shadow: 0 0 0 2px rgba(120,150,210,0.12) !important; }
     .workspace-analytics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 12px 0 18px 0; }
     .workspace-metric { border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; padding: 16px; }
     .task-bars { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
@@ -1443,11 +1449,21 @@ def build_app(
 
         speaker_review_heading = gr.Markdown("## Speaker Review", visible=False)
         speaker_setup = gr.HTML(visible=False)
+        gr.Markdown(
+            """
+            **Correct diarization before generating intelligence.**
+            Each line is one timestamped utterance. Edit only the speaker token
+            (for example, `SPEAKER_01` to `SPEAKER_00`); keep the timestamps and spoken words intact.
+            """,
+            elem_classes=["transcript-review-help"],
+            visible=False,
+        )
         transcript_editor = gr.Textbox(
-            label="Review transcript and correct speaker labels",
-            lines=14,
-            max_lines=30,
-            placeholder="Edit a line's speaker label (for example, SPEAKER_00) if diarization assigned it incorrectly.",
+            label="Transcript · editable",
+            lines=16,
+            max_lines=32,
+            placeholder="Timestamped transcript will appear here after analysis.",
+            elem_id="transcript-editor",
             visible=False,
         )
         speaker_confirmation = gr.Radio(
