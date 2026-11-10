@@ -3,9 +3,12 @@ import time
 import requests
 
 
+MODEL = "llama3.2:3b"
+
+
 def call_llm(system_prompt: str, user_prompt: str) -> str:
     payload = {
-        "model": "llama3.2:3b",
+        "model": MODEL,
         "messages": [
             {
                 "role": "system",
