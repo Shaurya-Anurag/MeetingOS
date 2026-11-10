@@ -245,7 +245,7 @@ def validate_speaker_review(original_transcript: str, reviewed_transcript: str) 
             if reviewed.strip() != original.strip():
                 raise ValueError(f"Line {index}: this unstructured line cannot be edited in speaker review.")
             corrected.append(original)
-    return {"transcript": "\\n".join(corrected), "changed_labels": int(changed)}
+    return {"transcript": "\n".join(corrected), "changed_labels": int(changed)}
 
 
 def finalize_speakers(
@@ -253,14 +253,23 @@ def finalize_speakers(
     speakers: dict,
     speaker_confirmation: str | None,
     names: list[str | None],
+    *,
+    original_transcript: str | None = None,
 ) -> dict[str, Any]:
-    """Apply optional human-provided names to the speaker-aware transcript."""
+    """Validate transcript edits, then apply optional human-provided speaker names."""
     if not transcript:
         return {
             "ok": False,
             "transcript": transcript or "",
             "error": "No meeting transcript is available.",
         }
+
+    if original_transcript is not None:
+        try:
+            review = validate_speaker_review(original_transcript, transcript)
+            transcript = review["transcript"]
+        except ValueError as exc:
+            return {"ok": False, "transcript": original_transcript, "error": str(exc)}
 
     if speaker_confirmation == "No":
         return {"ok": True, "transcript": transcript, "error": None}
