@@ -42,6 +42,9 @@ def persist_meeting_graph(
             edges.append((speaker_id, claim_id, "associated_with", {"basis": "timestamp_and_text_verified"}))
 
     with get_connection() as connection:
+        # Rebuild this meeting graph atomically; remove stale nodes and edges.
+        connection.execute("DELETE FROM provenance_edges WHERE meeting_id = ?", (meeting_id,))
+        connection.execute("DELETE FROM provenance_nodes WHERE meeting_id = ?", (meeting_id,))
         for node_id, node in nodes.items():
             connection.execute(
                 """INSERT INTO provenance_nodes(node_id, meeting_id, node_type, label, data_json, updated_at)
@@ -50,7 +53,6 @@ def persist_meeting_graph(
                    label=excluded.label, data_json=excluded.data_json, updated_at=CURRENT_TIMESTAMP""",
                 (node_id, meeting_id, node["type"], node["label"], json.dumps(node["data"], ensure_ascii=False)),
             )
-        connection.execute("DELETE FROM provenance_edges WHERE meeting_id = ?", (meeting_id,))
         for source, target, relation, metadata in edges:
             connection.execute(
                 """INSERT OR IGNORE INTO provenance_edges(meeting_id, source_node_id, target_node_id, relation, metadata_json)
