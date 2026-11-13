@@ -2,6 +2,7 @@
 import json
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,11 +13,20 @@ DB_PATH = Path(__file__).resolve().parent.parent / "meetingos.db"
 # DATABASE CONNECTION
 # ============================================================
 
+@contextmanager
 def get_connection():
+    """Yield a configured SQLite connection and always release it."""
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def utc_now():
