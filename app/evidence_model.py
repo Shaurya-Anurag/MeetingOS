@@ -101,3 +101,40 @@ def build_canonical_evidence(
                         add("visual_insights", index, evidence, item)
 
     return list(records.values())
+
+
+def apply_canonical_evidence(intelligence: dict[str, Any], analytics: dict[str, Any], meeting_id: int, transcript: str) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+    """Attach stable IDs, verified speakers and explicit ownership-review flags."""
+    rows = build_canonical_evidence(meeting_id, transcript, intelligence, analytics)
+    intelligence_copy = dict(intelligence or {})
+    analytics_copy = dict(analytics or {})
+    for row in rows:
+        category = row['category']
+        collection = analytics_copy.get('visual_insights', []) if category == 'visual_insights' else intelligence_copy.get(category, [])
+        index = row['item_index']
+        if index >= len(collection) or not isinstance(collection[index], dict):
+            continue
+        item = collection[index]
+        for span in item.get('evidence', []):
+            if not isinstance(span, dict):
+                continue
+            if str(span.get('timestamp') or '') != str(row.get('timestamp') if row.get('timestamp') is not None else ''):
+                continue
+            if _normalize(str(span.get('text') or '')) != _normalize(row['text']):
+                continue
+            span['evidence_id'] = row['evidence_id']
+            span['verification_status'] = row['verification_status']
+            if row.get('speaker'):
+                span['speaker'] = row['speaker']
+            else:
+                span.pop('speaker', None)
+        if category == 'action_items' and row.get('speaker'):
+            owner = str(item.get('owner') or '').strip()
+            if owner and owner.casefold() != row['speaker'].casefold():
+                item['ownership_review'] = {
+                    'status': 'mismatch', 'recorded_owner': owner,
+                    'evidence_speaker': row['speaker'],
+                    'reason': 'Verified transcript speaker differs from the extracted action owner.'
+                }
+                item['support_status'] = 'needs_review'
+    return intelligence_copy, analytics_copy, rows
