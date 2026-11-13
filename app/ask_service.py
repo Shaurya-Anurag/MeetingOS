@@ -1241,12 +1241,24 @@ def ask_meetingos(
         )
     )
 
+    # The provenance graph is a second, persisted retrieval surface. Its
+    # matches supplement (never replace) transcript/intelligence retrieval.
+    try:
+        from app.provenance_graph import search_provenance_graph
+        graph_matches = search_provenance_graph(query, limit=12)
+    except Exception:
+        graph_matches = []
+    graph_context = json.dumps(graph_matches, ensure_ascii=False, default=str)
+
     user_prompt = f"""
 USER QUESTION:
 {query}
 
 MEETING CONTEXT:
 {context}
+
+PERSISTED PROVENANCE GRAPH MATCHES (supplemental; verify against evidence above):
+{graph_context}
 """.strip()
 
     raw_response = call_llm(
