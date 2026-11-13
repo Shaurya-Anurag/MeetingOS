@@ -1146,11 +1146,14 @@ def _deadline_disambiguation(query: str) -> dict[str, str] | None:
         if target_date_evidence
         else "The saved evidence does not establish the queried date as a replacement deadline."
     )
-    subject = f"{owner}'s " if owner else "the "
+    ownership = (
+        f"The recorded action item assigns {task_display} to {owner} "
+        if owner else f"The recorded action item is {task_display} "
+    )
     return {
         "answer": (
-            f"No. The explicit action item for {subject}{task_display} records "
-            f"a deadline of {deadline_display}. {target_label}"
+            f"No. {ownership}with an explicit deadline of {deadline_display}. "
+            f"{target_label}"
         ),
         "reasoning": (
             "This conclusion uses the structured action-item deadline as the "
