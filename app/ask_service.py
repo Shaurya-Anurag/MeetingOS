@@ -1022,6 +1022,145 @@ def _build_context(
     )
 
 
+
+# =========================================================
+# DETERMINISTIC DEADLINE DISAMBIGUATION
+# =========================================================
+
+_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+}
+_MONTH_DATE_PATTERN = re.compile(
+    r"\\b(" + "|".join(_MONTHS) + r")\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b",
+    re.IGNORECASE,
+)
+
+
+def _date_keys(text: str) -> set[tuple[int, int]]:
+    return {
+        (_MONTHS[match.group(1).lower()], int(match.group(2)))
+        for match in _MONTH_DATE_PATTERN.finditer(text or "")
+    }
+
+
+def _collect_strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [part for child in value.values() for part in _collect_strings(child)]
+    if isinstance(value, list):
+        return [part for child in value for part in _collect_strings(child)]
+    return []
+
+
+def _deadline_disambiguation(query: str) -> dict[str, str] | None:
+    """
+    Resolve explicit 'is date a deadline for task?' questions from saved
+    action-item records. The LLM must not override a directly recorded
+    action-item deadline with a different target date.
+    """
+    normalized_query = _normalized(query)
+    if not re.search(r"\\b(deadline|due date)\\b", normalized_query):
+        return None
+
+    task_match = re.search(
+        r"\\b(?:deadline|due date)\\s+for\\s+(.+?)(?:\\?|,|\\bor\\s+is\\b|$)",
+        query,
+        re.IGNORECASE,
+    )
+    requested_dates = _date_keys(query)
+    if not task_match or len(requested_dates) != 1:
+        return None
+
+    task_tokens = _tokenize(task_match.group(1))
+    if not task_tokens:
+        return None
+
+    requested_date = next(iter(requested_dates))
+    matching_actions = []
+    target_date_evidence = []
+
+    for summary in get_all_meetings():
+        meeting = get_meeting(summary["id"])
+        if not meeting:
+            continue
+
+        intelligence = meeting.get("intelligence") or {}
+        action_items = intelligence.get("action_items", [])
+        if isinstance(action_items, list):
+            for item in action_items:
+                if not isinstance(item, dict):
+                    continue
+                task = str(item.get("task", ""))
+                tokens = _tokenize(task)
+                coverage = len(tokens & task_tokens) / max(1, len(task_tokens))
+                if coverage < 0.6:
+                    continue
+                deadline = str(item.get("deadline") or "").strip()
+                deadline_dates = _date_keys(deadline)
+                if deadline and deadline_dates:
+                    matching_actions.append({
+                        "meeting": meeting,
+                        "item": item,
+                        "task": task,
+                        "deadline": deadline,
+                        "deadline_dates": deadline_dates,
+                    })
+
+        # Only call a date a target date when the saved structured record
+        # explicitly places "target" close to that date.
+        for text_value in _collect_strings(intelligence):
+            for match in _MONTH_DATE_PATTERN.finditer(text_value):
+                date_key = (_MONTHS[match.group(1).lower()], int(match.group(2)))
+                if date_key != requested_date:
+                    continue
+                window = text_value[max(0, match.start() - 45):match.end() + 45].lower()
+                if "target" in window:
+                    target_date_evidence.append((meeting, text_value))
+
+    if not matching_actions:
+        return None
+
+    # Prefer a unique, directly matching task deadline. If records disagree,
+    # leave the decision to the evidence-aware answer rather than guessing.
+    distinct_deadlines = {
+        tuple(sorted(action["deadline_dates"]))
+        for action in matching_actions
+    }
+    if len(distinct_deadlines) != 1:
+        return None
+
+    recorded_dates = next(iter(distinct_deadlines))
+    if requested_date in recorded_dates:
+        return None
+
+    action = matching_actions[0]
+    deadline_display = action["deadline"]
+    task_display = action["task"]
+    owner = str(action["item"].get("owner") or "").strip()
+    target_label = (
+        "The records separately describe the queried date as a target date, "
+        "but do not establish it as a replacement deadline."
+        if target_date_evidence
+        else "The saved evidence does not establish the queried date as a replacement deadline."
+    )
+    subject = f"{owner}'s " if owner else "the "
+    return {
+        "answer": (
+            f"No. The explicit action item for {subject}{task_display} records "
+            f"a deadline of {deadline_display}. {target_label}"
+        ),
+        "reasoning": (
+            "This conclusion uses the structured action-item deadline as the "
+            "direct commitment. A date mentioned as an affected or target date "
+            "is not treated as the task deadline unless the action item explicitly "
+            "records that date."
+        ),
+    }
+
+
 # =========================================================
 # LLM
 # =========================================================
