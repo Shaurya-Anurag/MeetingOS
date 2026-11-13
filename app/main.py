@@ -13,6 +13,7 @@ from app.analytics_service import analyze_transcript
 from app.intelligence_service import generate_meeting_intelligence
 from app.intelligence_validation import validate_intelligence_payload, verify_claim_evidence
 from app.provenance_graph import persist_meeting_graph
+from app.evidence_model import apply_canonical_evidence
 from app.visual_analytics_service import extract_visual_insights
 from app.database import (
     initialize_database,
@@ -340,7 +341,6 @@ def generate_brief(
             stage["metadata"]["model"] = INTELLIGENCE_MODEL
 
         intelligence, intelligence_warnings = validate_intelligence_payload(intelligence)
-        intelligence = verify_claim_evidence(intelligence)
         warnings.extend(intelligence_warnings)
         if any(
             item.get("support_status") == "needs_review"
@@ -385,6 +385,16 @@ def generate_brief(
                 metadata={"optional": True},
             )
 
+        intelligence, analytics, canonical_records = apply_canonical_evidence(
+            intelligence, analytics, meeting_id, transcript
+        )
+        intelligence = verify_claim_evidence(intelligence)
+        if any(
+            item.get("support_status") == "needs_review"
+            for category in ("topics", "decisions", "action_items", "risks_and_concerns", "unresolved_questions", "contradictions")
+            for item in intelligence.get(category, [])
+        ):
+            warnings.append("Some structured claims have missing, unverified, or conflicting provenance and need review.")
         current_stage = "persistence"
         result = finalize_processing_meeting(
             meeting_id,
