@@ -114,3 +114,19 @@ def search_provenance_graph(query: str, limit: int = 12) -> list[dict[str, Any]]
          "data": json.loads(row["data_json"] or "{}")}
         for row in rows
     ]
+
+
+def get_meeting_graph(meeting_id: int) -> dict[str, list[dict[str, Any]]]:
+    with get_connection() as connection:
+        node_rows = connection.execute(
+            'SELECT node_id, node_type, label, data_json FROM provenance_nodes WHERE meeting_id = ? ORDER BY node_type, label',
+            (meeting_id,),
+        ).fetchall()
+        edge_rows = connection.execute(
+            'SELECT source_node_id, target_node_id, relation, metadata_json FROM provenance_edges WHERE meeting_id = ? ORDER BY id',
+            (meeting_id,),
+        ).fetchall()
+    return {
+        'nodes': [{'id': row['node_id'], 'type': row['node_type'], 'label': row['label'], 'data': json.loads(row['data_json'] or '{}')} for row in node_rows],
+        'edges': [{'source': row['source_node_id'], 'target': row['target_node_id'], 'relation': row['relation'], 'metadata': json.loads(row['metadata_json'] or '{}')} for row in edge_rows],
+    }
