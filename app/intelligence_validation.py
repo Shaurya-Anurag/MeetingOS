@@ -44,9 +44,11 @@ def verify_claim_evidence(payload: dict[str, Any]) -> dict[str, Any]:
         for item in result.get(key, []):
             item = dict(item)
             evidence = item.get("evidence", [])
-            item["support_status"] = "supported" if evidence and all(
+            ownership_mismatch = (item.get("ownership_review") or {}).get("status") == "mismatch"
+            evidence_verified = bool(evidence) and all(
                 entry.get("verification_status") == "verified" for entry in evidence
-            ) else "needs_review"
+            )
+            item["support_status"] = "supported" if evidence_verified and not ownership_mismatch else "needs_review"
             updated.append(item)
         result[key] = updated
     return result
