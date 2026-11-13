@@ -326,6 +326,10 @@ def generate_brief(
         current_stage = "transcript_persistence"
         # Preserve speaker-name edits made during speaker review.
         save_transcription(meeting_id, transcript, speakers, run_id=run_id)
+        record_audit_event(meeting_id, "reviewed_transcript_saved", {
+            "speaker_count": len(speakers or {}),
+            "transcript_line_count": len([line for line in transcript.splitlines() if line.strip()]),
+        })
 
         current_stage = "analytics"
         with stage_event(run_id, "analytics") as stage:
