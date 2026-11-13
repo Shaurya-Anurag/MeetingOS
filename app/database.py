@@ -128,6 +128,44 @@ def initialize_database():
 
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS canonical_evidence (
+                evidence_id TEXT PRIMARY KEY, meeting_id INTEGER NOT NULL,
+                category TEXT NOT NULL, item_index INTEGER NOT NULL, timestamp REAL,
+                start_seconds REAL, end_seconds REAL, speaker TEXT, text TEXT NOT NULL,
+                transcript_text TEXT, verification_status TEXT NOT NULL, payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS provenance_nodes (
+                node_id TEXT PRIMARY KEY, meeting_id INTEGER NOT NULL, node_type TEXT NOT NULL,
+                label TEXT NOT NULL, data_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS provenance_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, meeting_id INTEGER NOT NULL,
+                source_node_id TEXT NOT NULL, target_node_id TEXT NOT NULL, relation TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                UNIQUE(meeting_id, source_node_id, target_node_id, relation),
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evidence_meeting_time ON canonical_evidence(meeting_id, timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evidence_speaker ON canonical_evidence(meeting_id, speaker)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_provenance_meeting_type ON provenance_nodes(meeting_id, node_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_provenance_edges_source ON provenance_edges(meeting_id, source_node_id)")
+
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 meeting_id INTEGER NOT NULL,
