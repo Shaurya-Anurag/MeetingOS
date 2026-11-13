@@ -75,7 +75,7 @@ def build_canonical_evidence(
         normalized_source = _normalize(source_text)
         verified = bool(
             normalized_evidence and normalized_source
-            and (normalized_evidence in normalized_source or normalized_source in normalized_evidence)
+            and normalized_evidence in normalized_source
         )
         # If the evidence is not text-verified, do not attach a guessed speaker.
         speaker = segment["speaker"] if verified and segment else None
