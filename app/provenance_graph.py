@@ -36,6 +36,17 @@ def persist_meeting_graph(
         nodes[claim_id] = {"type": "claim", "label": claim_text[:180], "data": {"category": category, "item": item}}
         edges.append((claim_id, eid, "supported_by", {"verification_status": row["verification_status"]}))
         edges.append((meeting_node, claim_id, "contains_claim", {}))
+        if category == "action_items":
+            owner = str(item.get("owner") or "").strip()
+            deadline = str(item.get("deadline") or "").strip()
+            if owner:
+                owner_id = "person:{}:{}".format(meeting_id, owner.casefold())
+                nodes[owner_id] = {"type": "person", "label": owner, "data": {"name": owner}}
+                edges.append((claim_id, owner_id, "assigned_to", {}))
+            if deadline:
+                deadline_id = "deadline:{}:{}:{}".format(meeting_id, row["item_index"], deadline.casefold())
+                nodes[deadline_id] = {"type": "deadline", "label": deadline, "data": {"value": deadline, "explicit": True}}
+                edges.append((claim_id, deadline_id, "has_explicit_deadline", {}))
         if row.get("speaker"):
             speaker_id = f"speaker:{meeting_id}:{row['speaker'].casefold()}"
             nodes[speaker_id] = {"type": "speaker", "label": row["speaker"], "data": {"speaker": row["speaker"]}}
