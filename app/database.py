@@ -166,6 +166,26 @@ def initialize_database():
 
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS meeting_audit_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, meeting_id INTEGER, event_type TEXT NOT NULL,
+                actor TEXT, payload_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_meeting_created ON meeting_audit_events(meeting_id, created_at)")
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS research_runs (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, hypothesis TEXT, dataset_version TEXT,
+                config_json TEXT NOT NULL, metrics_json TEXT NOT NULL, status TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT
+            )
+            """
+        )
+
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 meeting_id INTEGER NOT NULL,
