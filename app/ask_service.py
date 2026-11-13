@@ -402,14 +402,6 @@ def _flatten_intelligence(
                         "timestamp"
                     )
 
-                    evidence_score = (
-                        base_score
-                        + _score_text(
-                            query,
-                            evidence_text,
-                        )
-                    )
-
                     matched_segment = (
                         _match_transcript_segment(
                             segments,
