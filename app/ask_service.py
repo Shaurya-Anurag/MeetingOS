@@ -1186,8 +1186,11 @@ IMPORTANT:
 10. Do not claim causation merely because two events appear near each other.
 11. If the evidence is insufficient, explicitly say so.
 12. For cross-meeting questions, reason across the supplied meetings.
-13. Use SOURCE IDs such as [S1] or [S2] when making important factual claims.
-14. Do not create or return your own source metadata. MeetingOS attaches provenance separately.
+13. Distinguish an explicit action-item deadline from a separate target date, milestone, or date that is merely affected by an action.
+14. Never relabel a target date as a task deadline unless the evidence explicitly assigns that date to that task.
+15. If two dates appear, state what each date is explicitly attached to; do not infer replacement, extension, or dependency without direct evidence.
+16. Use SOURCE IDs such as [S1] or [S2] when making important factual claims.
+17. Do not create or return your own source metadata. MeetingOS attaches provenance separately.
 
 Return ONLY valid JSON:
 
