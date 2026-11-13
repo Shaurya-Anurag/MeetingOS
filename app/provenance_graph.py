@@ -62,19 +62,6 @@ def persist_meeting_graph(
         connection.execute("DELETE FROM canonical_evidence WHERE meeting_id = ?", (meeting_id,))
         intelligence_copy = json.loads(json.dumps(intelligence, ensure_ascii=False))
         analytics_copy = json.loads(json.dumps(analytics or {}, ensure_ascii=False))
-        for row in evidence:
-            category = row['category']
-            index = row['item_index']
-            collection = analytics_copy.get('visual_insights', []) if category == 'visual_insights' else intelligence_copy.get(category, [])
-            if index < len(collection) and isinstance(collection[index], dict):
-                for span in collection[index].get('evidence', []):
-                    if isinstance(span, dict) and str(span.get('timestamp') or '') == str(row['timestamp']):
-                        span['evidence_id'] = row['evidence_id']
-                        span['verification_status'] = row['verification_status']
-                        if row.get('speaker'):
-                            span['speaker'] = row['speaker']
-                        else:
-                            span.pop('speaker', None)
         connection.execute(
             'UPDATE meetings SET intelligence_json = ?, analytics_json = ? WHERE id = ?',
             (json.dumps(intelligence_copy, ensure_ascii=False), json.dumps(analytics_copy, ensure_ascii=False), meeting_id),
