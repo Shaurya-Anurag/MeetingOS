@@ -34,6 +34,8 @@ class EvidenceGraphTests(unittest.TestCase):
         self.assertEqual(item['owner'], 'Shaurya')
         self.assertEqual(item['ownership_review']['status'], 'mismatch')
         self.assertEqual(item['ownership_review']['evidence_speaker'], 'Harshal')
+        checked = verify_claim_evidence(checked)
+        self.assertEqual(checked['action_items'][0]['support_status'], 'needs_review')
     def test_structural_validation_and_support_status(self):
         payload, warnings = validate_intelligence_payload({
             "action_items": [{"task": "Do work", "evidence": []}],
