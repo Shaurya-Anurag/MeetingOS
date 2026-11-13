@@ -976,7 +976,7 @@ def build_app(
         # Speaker review is complete. Hide the review controls, but keep
         # the Generate action visible so the user can continue the workflow.
         return (
-            result.get("transcript", transcript),
+            result.get("transcript", review["transcript"]),
             gr.update(visible=False),  # speaker_review_heading
             gr.update(visible=False),  # speaker_setup
             gr.update(visible=False, value=[]),  # speaker_review_table
