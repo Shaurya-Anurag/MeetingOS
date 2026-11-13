@@ -11,6 +11,8 @@ from app.speaker_review import transcript_to_review_rows, validate_speaker_revie
 from Services.Transcription import transcribe_audio
 from app.analytics_service import analyze_transcript
 from app.intelligence_service import generate_meeting_intelligence
+from app.intelligence_validation import validate_intelligence_payload, verify_claim_evidence
+from app.provenance_graph import persist_meeting_graph
 from app.visual_analytics_service import extract_visual_insights
 from app.database import (
     initialize_database,
@@ -337,10 +339,15 @@ def generate_brief(
             stage["meeting_id"] = meeting_id
             stage["metadata"]["model"] = INTELLIGENCE_MODEL
 
-        if not isinstance(intelligence, dict):
-            raise ValueError("The intelligence model returned an invalid response.")
-        if not isinstance(intelligence.get("action_items", []), list):
-            raise ValueError("The intelligence response contains invalid action items.")
+        intelligence, intelligence_warnings = validate_intelligence_payload(intelligence)
+        intelligence = verify_claim_evidence(intelligence)
+        warnings.extend(intelligence_warnings)
+        if any(
+            item.get("support_status") == "needs_review"
+            for category in ("topics", "decisions", "action_items", "risks_and_concerns", "unresolved_questions", "contradictions")
+            for item in intelligence.get(category, [])
+        ):
+            warnings.append("Some structured claims have missing or unverified evidence and need review.")
 
         current_stage = "validating"
         update_meeting_lifecycle(
@@ -387,6 +394,12 @@ def generate_brief(
             analytics=analytics,
             warnings=warnings,
         )
+        try:
+            graph_stats = persist_meeting_graph(meeting_id, transcript, intelligence, analytics)
+            emit_event(run_id, "provenance_graph", "success", meeting_id=meeting_id, metadata=graph_stats)
+        except Exception as graph_exc:
+            warnings.append(f"Provenance graph persistence failed ({type(graph_exc).__name__}).")
+            emit_event(run_id, "provenance_graph", "failed", meeting_id=meeting_id, error_type=type(graph_exc).__name__, metadata={"optional": True})
 
         duration_ms = (time.perf_counter() - total_start) * 1000
         emit_event(
