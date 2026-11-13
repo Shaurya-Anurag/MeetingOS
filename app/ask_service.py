@@ -1033,7 +1033,7 @@ _MONTHS = {
     "september": 9, "october": 10, "november": 11, "december": 12,
 }
 _MONTH_DATE_PATTERN = re.compile(
-    r"\\b(" + "|".join(_MONTHS) + r")\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b",
+    r"\b(" + "|".join(_MONTHS) + r")\s+(\d{1,2})(?:st|nd|rd|th)?\b",
     re.IGNORECASE,
 )
 
@@ -1062,11 +1062,11 @@ def _deadline_disambiguation(query: str) -> dict[str, str] | None:
     action-item deadline with a different target date.
     """
     normalized_query = _normalized(query)
-    if not re.search(r"\\b(deadline|due date)\\b", normalized_query):
+    if not re.search(r"\b(deadline|due date)\b", normalized_query):
         return None
 
     task_match = re.search(
-        r"\\b(?:deadline|due date)\\s+for\\s+(.+?)(?:\\?|,|\\bor\\s+is\\b|$)",
+        r"\b(?:deadline|due date)\s+for\s+(.+?)(?:\?|,|\bor\s+is\b|$)",
         query,
         re.IGNORECASE,
     )
