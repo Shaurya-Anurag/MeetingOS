@@ -1484,6 +1484,7 @@ def build_app(
         speaker_review_table = gr.Dataframe(
             headers=["Timestamp", "Speaker", "Utterance"],
             datatype=["str", "str", "str"],
+            type="array",
             row_count=(0, "dynamic"),
             col_count=(3, "fixed"),
             label="Review detected speakers · edit the Speaker column",
