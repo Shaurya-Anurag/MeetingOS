@@ -25,6 +25,15 @@ class EvidenceGraphTests(unittest.TestCase):
         self.assertEqual(row["verification_status"], "unverified")
         self.assertIsNone(row["speaker"])
 
+    def test_verified_speaker_owner_mismatch_is_flagged_not_rewritten(self):
+        from app.evidence_model import apply_canonical_evidence
+        transcript = '[10.00s -> 12.00s] Harshal: I will finish the landing page by September 12th.'
+        intelligence = {'action_items': [{'task': 'Finish landing page', 'owner': 'Shaurya', 'deadline': 'September 12th', 'evidence': [{'timestamp': '10.5s', 'text': 'I will finish the landing page by September 12th.'}]}]}
+        checked, _, _ = apply_canonical_evidence(intelligence, {}, 1, transcript)
+        item = checked['action_items'][0]
+        self.assertEqual(item['owner'], 'Shaurya')
+        self.assertEqual(item['ownership_review']['status'], 'mismatch')
+        self.assertEqual(item['ownership_review']['evidence_speaker'], 'Harshal')
     def test_structural_validation_and_support_status(self):
         payload, warnings = validate_intelligence_payload({
             "action_items": [{"task": "Do work", "evidence": []}],
