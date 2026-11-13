@@ -400,6 +400,24 @@ def generate_brief(
             for item in intelligence.get(category, [])
         ):
             warnings.append("Some structured claims have missing, unverified, or conflicting provenance and need review.")
+        current_stage = "provenance_graph"
+        try:
+            graph_stats = persist_meeting_graph(meeting_id, transcript, intelligence, analytics)
+            record_audit_event(meeting_id, "provenance_graph_rebuilt", graph_stats)
+            emit_event(run_id, "provenance_graph", "success", meeting_id=meeting_id, metadata=graph_stats)
+        except Exception as graph_exc:
+            warnings.append(f"Provenance graph persistence failed ({type(graph_exc).__name__}).")
+            emit_event(
+                run_id,
+                "provenance_graph",
+                "failed",
+                meeting_id=meeting_id,
+                error_type=type(graph_exc).__name__,
+                metadata={"optional": True, "error": str(graph_exc)[:500]},
+            )
+
+        # Finalize only after optional graph work so graph failures are reflected
+        # in the persisted warning list and final lifecycle status.
         current_stage = "persistence"
         result = finalize_processing_meeting(
             meeting_id,
@@ -409,13 +427,6 @@ def generate_brief(
             analytics=analytics,
             warnings=warnings,
         )
-        try:
-            graph_stats = persist_meeting_graph(meeting_id, transcript, intelligence, analytics)
-            record_audit_event(meeting_id, "provenance_graph_rebuilt", graph_stats)
-            emit_event(run_id, "provenance_graph", "success", meeting_id=meeting_id, metadata=graph_stats)
-        except Exception as graph_exc:
-            warnings.append(f"Provenance graph persistence failed ({type(graph_exc).__name__}).")
-            emit_event(run_id, "provenance_graph", "failed", meeting_id=meeting_id, error_type=type(graph_exc).__name__, metadata={"optional": True})
 
         duration_ms = (time.perf_counter() - total_start) * 1000
         emit_event(
