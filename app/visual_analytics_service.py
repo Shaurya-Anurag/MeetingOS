@@ -289,11 +289,21 @@ def has_plausible_business_metrics(transcript: str) -> bool:
     return False
 
 
-def extract_visual_insights(transcript: str) -> list[dict[str, Any]]:
+def extract_visual_insights(
+    transcript: str,
+    *,
+    diagnostics: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Extract transcript-grounded visual metrics and optionally expose diagnostics."""
+    diagnostics = diagnostics if diagnostics is not None else {}
+    diagnostics.update({"status": "started"})
+
     if not transcript or not transcript.strip():
+        diagnostics.update({"status": "skipped", "reason": "empty_transcript"})
         return []
 
     if not has_plausible_business_metrics(transcript):
+        diagnostics.update({"status": "skipped", "reason": "no_plausible_metrics"})
         print(
             "[TIMING] Visual insights skipped: "
             "no plausible quantitative business metric detected."
@@ -316,6 +326,7 @@ def extract_visual_insights(transcript: str) -> list[dict[str, Any]]:
     }
 
     started = time.perf_counter()
+    diagnostics["status"] = "running"
 
     try:
         print(
@@ -330,6 +341,8 @@ def extract_visual_insights(transcript: str) -> list[dict[str, Any]]:
         )
         response.raise_for_status()
         body = response.json()
+        if not isinstance(body, dict):
+            raise ValueError("Ollama visual-insights response must be a JSON object.")
 
         print(
             f"[TIMING] Visual insights HTTP: "
@@ -345,22 +358,41 @@ def extract_visual_insights(transcript: str) -> list[dict[str, Any]]:
             "eval_count": body.get("eval_count"),
         }
 
+        diagnostics.update(stats)
         print(f"[TIMING] Visual insights Ollama stats: {stats}")
 
-        raw = body.get("message", {}).get("content", "")
+        message = body.get("message") or {}
+        if not isinstance(message, dict):
+            raise ValueError("Ollama visual-insights message must be an object.")
+        raw = message.get("content", "")
+        if not isinstance(raw, str):
+            raise ValueError("Ollama visual-insights content must be text.")
         parsed = _parse_json(raw)
         validated = validate_visual_insights(parsed)
 
+        elapsed = time.perf_counter() - started
+        diagnostics.update({
+            "status": "success",
+            "elapsed_seconds": round(elapsed, 3),
+            "raw_chars": len(raw),
+            "valid_insight_count": len(validated),
+        })
         print(
             f"[TIMING] Visual insights validation: "
-            f"{time.perf_counter() - started:.2f}s total | "
+            f"{elapsed:.2f}s total | "
             f"Raw chars: {len(raw)} | "
             f"Valid insights: {len(validated)}"
         )
 
         return validated
 
-    except (requests.RequestException, ValueError, TypeError) as exc:
+    except (requests.RequestException, ValueError) as exc:
+        diagnostics.update({
+            "status": "failed",
+            "elapsed_seconds": round(time.perf_counter() - started, 3),
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:500],
+        })
         print(
             f"[TIMING] Visual insights failed after "
             f"{time.perf_counter() - started:.2f}s: "
