@@ -31,6 +31,13 @@ class ProvenancePersistenceTests(unittest.TestCase):
                 with database.get_connection() as connection:
                     count = connection.execute('SELECT COUNT(*) FROM canonical_evidence WHERE meeting_id = ?', (meeting_id,)).fetchone()[0]
                 self.assertEqual(count, 1)
+                audit_id = database.record_audit_event(meeting_id, 'test_event', {'ok': True})
+                self.assertGreater(audit_id, 0)
+                database.create_research_run('run-test', 'Evidence graph test', hypothesis='Stable evidence IDs', config={'seed': 7})
+                database.finish_research_run('run-test', {'passed': 1}, status='completed')
+                with database.get_connection() as connection:
+                    run = connection.execute('SELECT status, metrics_json FROM research_runs WHERE id = ?', ('run-test',)).fetchone()
+                self.assertEqual(run['status'], 'completed')
 
 
 if __name__ == '__main__':
