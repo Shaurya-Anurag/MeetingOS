@@ -118,7 +118,7 @@ def apply_canonical_evidence(intelligence: dict[str, Any], analytics: dict[str, 
         for span in item.get('evidence', []):
             if not isinstance(span, dict):
                 continue
-            span_match = re.search(r'\\d+(?:\\.\\d+)?', str(span.get('timestamp') or ''))
+            span_match = re.search(r'\d+(?:\.\d+)?', str(span.get('timestamp') or ''))
             span_timestamp = float(span_match.group()) if span_match else None
             if span_timestamp != row.get('timestamp'):
                 continue
