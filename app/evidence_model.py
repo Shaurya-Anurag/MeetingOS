@@ -45,11 +45,16 @@ def build_canonical_evidence(
         timestamp = float(match.group()) if match else None
         segment = None
         if timestamp is not None and segments:
-            segment = min(
+            nearest = min(
                 segments,
                 key=lambda row: 0 if row["start"] <= timestamp <= row["end"]
                 else min(abs(row["start"] - timestamp), abs(row["end"] - timestamp)),
             )
+            distance = 0.0 if nearest["start"] <= timestamp <= nearest["end"] else min(
+                abs(nearest["start"] - timestamp), abs(nearest["end"] - timestamp)
+            )
+            if distance <= 2.0:
+                segment = nearest
         source_text = segment["text"] if segment else ""
         normalized_evidence = _normalize(text)
         normalized_source = _normalize(source_text)
