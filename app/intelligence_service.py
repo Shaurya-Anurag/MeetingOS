@@ -210,7 +210,13 @@ def attach_speakers_to_evidence(
                     ):
                         break
 
-                if best_match and best_distance <= 2.0:
+                # Timestamp proximity alone cannot attribute a quoted claim.
+                # The quote must first pass transcript-text verification.
+                if (
+                    best_match
+                    and best_distance <= 2.0
+                    and evidence_item.get("verification_status") == "verified"
+                ):
                     evidence_item["speaker"] = best_match["speaker"]
                 else:
                     evidence_item.pop("speaker", None)
