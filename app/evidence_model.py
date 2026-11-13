@@ -22,6 +22,22 @@ def _stable_id(*parts: Any) -> str:
     return "ev_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
 
 
+def _parse_seconds(value: Any) -> float | None:
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    if ':' in raw:
+        try:
+            parts = [float(part) for part in raw.split(':')]
+            if len(parts) == 3:
+                return parts[0] * 3600 + parts[1] * 60 + parts[2]
+            if len(parts) == 2:
+                return parts[0] * 60 + parts[1]
+        except ValueError:
+            return None
+    match = re.search(r'\\d+(?:\\.\\d+)?', raw)
+    return float(match.group()) if match else None
+
 def _normalize(text: str) -> str:
     return " ".join(re.findall(r"\w+", (text or "").casefold()))
 
@@ -41,8 +57,7 @@ def build_canonical_evidence(
         if not text:
             return
         raw_ts = evidence.get("timestamp")
-        match = re.search(r"\d+(?:\.\d+)?", str(raw_ts or ""))
-        timestamp = float(match.group()) if match else None
+        timestamp = _parse_seconds(raw_ts)
         segment = None
         if timestamp is not None and segments:
             nearest = min(
@@ -123,8 +138,7 @@ def apply_canonical_evidence(intelligence: dict[str, Any], analytics: dict[str, 
         for span in item.get('evidence', []):
             if not isinstance(span, dict):
                 continue
-            span_match = re.search(r'\d+(?:\.\d+)?', str(span.get('timestamp') or ''))
-            span_timestamp = float(span_match.group()) if span_match else None
+            span_timestamp = _parse_seconds(span.get('timestamp'))
             if span_timestamp != row.get('timestamp'):
                 continue
             if _normalize(str(span.get('text') or '')) != _normalize(row['text']):
