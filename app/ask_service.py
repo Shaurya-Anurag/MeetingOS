@@ -1147,8 +1147,8 @@ def _deadline_disambiguation(query: str) -> dict[str, str] | None:
         else "The saved evidence does not establish the queried date as a replacement deadline."
     )
     ownership = (
-        f"The recorded action item assigns {task_display} to {owner} "
-        if owner else f"The recorded action item is {task_display} "
+        f"{owner} is recorded as the owner of '{task_display}' "
+        if owner else f"The recorded task is '{task_display}' "
     )
     return {
         "answer": (
