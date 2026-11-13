@@ -1224,30 +1224,21 @@ def ask_meetingos(
         query
     )
 
-    if not retrieved:
-        return {
-            "answer": (
-                "I couldn't find enough "
-                "relevant evidence across "
-                "the saved meetings to answer that."
-            ),
-            "reasoning": "",
-            "sources": [],
-        }
-
-    context, sources = (
-        _build_context(
-            retrieved
-        )
-    )
-
-    # The provenance graph is a second, persisted retrieval surface. Its
-    # matches supplement (never replace) transcript/intelligence retrieval.
+    # The persisted graph can recover claims even when lexical retrieval misses.
     try:
         from app.provenance_graph import search_provenance_graph
         graph_matches = search_provenance_graph(query, limit=12)
     except Exception:
         graph_matches = []
+
+    if not retrieved and not graph_matches:
+        return {
+            'answer': 'I could not find enough relevant evidence across the saved meetings to answer that.',
+            'reasoning': '',
+            'sources': [],
+        }
+
+    context, sources = _build_context(retrieved)
     graph_context = json.dumps(graph_matches, ensure_ascii=False, default=str)
     known_source_keys = {(source.get("meeting_id"), source.get("timestamp"), source.get("evidence")) for source in sources}
     for node in graph_matches:
