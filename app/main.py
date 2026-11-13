@@ -29,6 +29,7 @@ from app.database import (
     update_task_status,
     start_meeting_retry,
     recover_stale_meetings,
+    record_audit_event,
 )
 
 
@@ -406,6 +407,7 @@ def generate_brief(
         )
         try:
             graph_stats = persist_meeting_graph(meeting_id, transcript, intelligence, analytics)
+            record_audit_event(meeting_id, "provenance_graph_rebuilt", graph_stats)
             emit_event(run_id, "provenance_graph", "success", meeting_id=meeting_id, metadata=graph_stats)
         except Exception as graph_exc:
             warnings.append(f"Provenance graph persistence failed ({type(graph_exc).__name__}).")
