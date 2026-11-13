@@ -95,26 +95,27 @@ def persist_meeting_graph(
 
 
 def search_provenance_graph(query: str, limit: int = 12) -> list[dict[str, Any]]:
-    terms = [term.casefold() for term in (query or "").split() if len(term) > 2]
+    stop = {'the', 'and', 'for', 'with', 'does', 'what', 'when', 'who', 'how', 'are', 'was', 'is', 'that', 'this', 'from'}
+    terms = list(dict.fromkeys(term.casefold() for term in (query or '').split() if len(term) > 2 and term.casefold() not in stop))
     if not terms:
         return []
-    where = " OR ".join(["LOWER(label) LIKE ?" for _ in terms])
-    params = [f"%{term}%" for term in terms]
+    where = ' OR '.join(['LOWER(label) LIKE ?' for _ in terms])
+    score = ' + '.join(['CASE WHEN LOWER(label) LIKE ? THEN 1 ELSE 0 END' for _ in terms])
+    params = [f'%{term}%' for term in terms] + [f'%{term}%' for term in terms]
     params.append(max(1, min(int(limit), 50)))
     with get_connection() as connection:
         rows = connection.execute(
-            f"""SELECT node_id, meeting_id, node_type, label, data_json
+            f'''SELECT node_id, meeting_id, node_type, label, data_json
                 FROM provenance_nodes WHERE {where}
-                ORDER BY updated_at DESC LIMIT ?""",
+                ORDER BY ({score}) DESC, updated_at DESC LIMIT ?''',
             params,
         ).fetchall()
     return [
-        {"node_id": row["node_id"], "meeting_id": row["meeting_id"],
-         "node_type": row["node_type"], "label": row["label"],
-         "data": json.loads(row["data_json"] or "{}")}
+        {'node_id': row['node_id'], 'meeting_id': row['meeting_id'],
+         'node_type': row['node_type'], 'label': row['label'],
+         'data': json.loads(row['data_json'] or '{}')}
         for row in rows
     ]
-
 
 def get_meeting_graph(meeting_id: int) -> dict[str, list[dict[str, Any]]]:
     with get_connection() as connection:
