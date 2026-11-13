@@ -5,7 +5,16 @@ import hashlib
 import re
 from typing import Any
 
-from app.ask_service import build_transcript_index
+TRANSCRIPT_LINE_PATTERN = re.compile(r"^\s*\[(\d+(?:\.\d+)?)s\s*->\s*(\d+(?:\.\d+)?)s\]\s*(.*?):\s*(.*)$")
+
+
+def _transcript_index(transcript: str) -> list[dict[str, Any]]:
+    segments = []
+    for line in (transcript or "").splitlines():
+        match = TRANSCRIPT_LINE_PATTERN.match(line.strip())
+        if match:
+            segments.append({"start": float(match.group(1)), "end": float(match.group(2)), "speaker": match.group(3).strip(), "text": match.group(4).strip()})
+    return segments
 
 
 def _stable_id(*parts: Any) -> str:
@@ -24,7 +33,7 @@ def build_canonical_evidence(
     analytics: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build stable evidence rows and derive speaker only from transcript time."""
-    segments = build_transcript_index(transcript)
+    segments = _transcript_index(transcript)
     records: dict[str, dict[str, Any]] = {}
 
     def add(category: str, item_index: int, evidence: dict[str, Any], item: dict[str, Any]):
