@@ -1095,3 +1095,38 @@ def recover_stale_meetings(stale_after_minutes: int = 45) -> int:
 if __name__ == "__main__":
     initialize_database()
     print(f"Database initialized at: {DB_PATH}")
+
+
+def record_audit_event(meeting_id, event_type, payload=None, actor='system'):
+    if not event_type or not str(event_type).strip():
+        raise ValueError('event_type is required')
+    with get_connection() as connection:
+        cursor = connection.execute(
+            'INSERT INTO meeting_audit_events(meeting_id, event_type, actor, payload_json) VALUES (?, ?, ?, ?)',
+            (meeting_id, str(event_type), actor, json.dumps(payload or {}, ensure_ascii=False, default=str)),
+        )
+        return cursor.lastrowid
+
+
+def create_research_run(run_id, name, hypothesis=None, dataset_version=None, config=None):
+    if not run_id or not name:
+        raise ValueError('run_id and name are required')
+    with get_connection() as connection:
+        connection.execute(
+            'INSERT INTO research_runs(id, name, hypothesis, dataset_version, config_json, metrics_json, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (run_id, name, hypothesis, dataset_version, json.dumps(config or {}, ensure_ascii=False), '{}', 'running'),
+        )
+    return run_id
+
+
+def finish_research_run(run_id, metrics=None, status='completed'):
+    if status not in {'completed', 'failed', 'cancelled'}:
+        raise ValueError('Unsupported research run status')
+    with get_connection() as connection:
+        cursor = connection.execute(
+            'UPDATE research_runs SET metrics_json = ?, status = ?, completed_at = ? WHERE id = ?',
+            (json.dumps(metrics or {}, ensure_ascii=False, default=str), status, utc_now(), run_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError(f'Research run {run_id} does not exist')
+    return run_id
