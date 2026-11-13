@@ -1249,6 +1249,28 @@ def ask_meetingos(
     except Exception:
         graph_matches = []
     graph_context = json.dumps(graph_matches, ensure_ascii=False, default=str)
+    known_source_keys = {(source.get("meeting_id"), source.get("timestamp"), source.get("evidence")) for source in sources}
+    for node in graph_matches:
+        if node.get("node_type") != "evidence":
+            continue
+        data = node.get("data") or {}
+        evidence_text = str(data.get("text") or node.get("label") or "")
+        timestamp = data.get("timestamp")
+        key = (node.get("meeting_id"), f"{timestamp:.2f}s" if isinstance(timestamp, (int, float)) else str(timestamp or ""), evidence_text)
+        if key in known_source_keys or not evidence_text:
+            continue
+        sources.append({
+            "source_id": f"G{len(sources) + 1}",
+            "evidence_id": node.get("node_id"),
+            "meeting_id": node.get("meeting_id"),
+            "meeting_topic": f"Meeting {node.get('meeting_id')}",
+            "speaker": data.get("speaker") or "",
+            "timestamp": key[1],
+            "evidence": evidence_text,
+            "source_type": "Canonical evidence",
+            "verification_status": data.get("verification_status", "unverified"),
+        })
+        known_source_keys.add(key)
 
     user_prompt = f"""
 USER QUESTION:
