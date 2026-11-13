@@ -35,7 +35,7 @@ def _parse_seconds(value: Any) -> float | None:
                 return parts[0] * 60 + parts[1]
         except ValueError:
             return None
-    match = re.search(r'\\d+(?:\\.\\d+)?', raw)
+    match = re.search(r'\d+(?:\.\d+)?', raw)
     return float(match.group()) if match else None
 
 def _normalize(text: str) -> str:
